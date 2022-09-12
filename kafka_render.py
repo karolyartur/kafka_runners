@@ -3,11 +3,12 @@ import json
 import logging
 import time
 from kafka_runner import KafkaRunner
+from minio_client import MinioClient
 from jsonschema import validate
 from jsonschema.exceptions import ValidationError
 from json.decoder import JSONDecodeError
 
-parser = argparse.ArgumentParser(description="Kafka Runner")
+parser = argparse.ArgumentParser(description="Kafka Renderer")
 parser.add_argument("in_topic_name", type=str,help="in_topic name")
 parser.add_argument("out_topic_name", type=str,help="out_topic name")
 parser.add_argument("bootstrap_servers", type=str, nargs='+', help="list of bootstrap servers")
@@ -19,10 +20,7 @@ parser.add_argument("-d","--debug",dest='debug', action='store_true', help="run 
 
 class KafkaRender(KafkaRunner):
     ## --> scene az object storage-bol
-    ## --> add timings to cmd run --> to output
     ## SCHEMA PATH FROM COMMAND LINE OR DIRECT ENV VAR? --> schema in git repo -->> docker run env var --> commit hash --> deploy key??
-    ## CONSUMER GROUP ID CAUSES KAFKA CONFIG ERROR --> request timeout > session timeout
-    ## --> invalid schema --> except
     ## --> error topic in kafka -->> docker env variable (docker container hash) unique ID for container name + timestamp
     def __init__(self,in_topic_name, out_topic_name, bootstrap_servers, blender = 'blender', scene='scene', schema_path='../json_schemas/render_job.schema.json', consumer_group_id = None, loglevel = logging.WARN):
         self.blender = blender
@@ -30,7 +28,7 @@ class KafkaRender(KafkaRunner):
         self.schema_path = schema_path
         try:
             super().__init__(in_topic_name, out_topic_name, bootstrap_servers, consumer_group_id=consumer_group_id)
-        except RuntimeError as e:
+        except RuntimeError:
             exit(0)
         try:
             with open(self.schema_path, 'r') as f:
@@ -42,6 +40,10 @@ class KafkaRender(KafkaRunner):
             self.logger.warn('JSON schema for Kafka message at path: "{}" could not be decoded (invalid JSON)\nIncoming messages will NOT be validated!'.format(schema_path))
             self.schema = {}
         self.logger.setLevel(loglevel)
+        try:
+            self.client = MinioClient(logger = self.logger)
+        except (RuntimeError,ValueError):
+            exit(0)
 
     def msg_to_command(self, msg):
         try:
@@ -66,8 +68,8 @@ class KafkaRender(KafkaRunner):
             else:
                 cmd = [self.blender, self.scene, '--background', '--python', 'render_frames.py', '--', '-fs {}'.format(frame_start), '-fn {}'.format(frame_num)]
             self.logger.info('Command to be executed: {}'.format(cmd))
-            return cmd
-            # return ['sleep', '5']
+            #return cmd
+            return ['sleep', '5']
 
     def make_response(self, in_msg, elapsed_time):
         try:
