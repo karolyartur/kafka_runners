@@ -1,11 +1,17 @@
+import io
+import socket
 import json
 import time
 import argparse
 import subprocess
-from kafka import KafkaConsumer
+import logging
+import traceback
+from kafka import KafkaConsumer, KafkaProducer
+from kafka.errors import KafkaConfigurationError, KafkaTimeoutError
 
 parser = argparse.ArgumentParser(description="Kafka Runner")
-parser.add_argument("topic_name", type=str,help="topic name")
+parser.add_argument("in_topic_name", type=str,help="in_topic name")
+parser.add_argument("out_topic_name", type=str,help="out_topic name")
 parser.add_argument("bootstrap_servers", type=str, nargs='+', help="list of bootstrap servers")
 
 
@@ -13,42 +19,108 @@ class KafkaRunner():
     '''
         Simple consumer for running command based on messages from Kafka
     '''
-    def __init__(self, topic_name, bootstrap_servers):
+    def __init__(self, in_topic_name, out_topic_name, bootstrap_servers, consumer_group_id=None, error_topic_name='error.log', loglevel=logging.WARN):
         self.timeout = 30
-        self.topic_name = topic_name
+        self.in_topic_name = in_topic_name
+        self.out_topic_name = out_topic_name
         self.bootstrap_servers = bootstrap_servers
-        self.consumer = KafkaConsumer(
-            self.topic_name,
-            bootstrap_servers=self.bootstrap_servers,
-            request_timeout_ms=5000,
-            reconnect_backoff_max_ms=50,
-            session_timeout_ms=self.timeout*1000,
-            consumer_timeout_ms=self.timeout*1000,
-            value_deserializer=lambda x: json.loads(x.decode('utf-8'))
-            )
+        self.consumer_group_id = consumer_group_id
+        self.error_topic_name = error_topic_name
+
+        # Create logger
+        self.logger = logging.getLogger(__name__ + '.' + type(self).__name__ + '@' + socket.gethostname())
+        self.logger.setLevel(loglevel)
+        self.error_stream = io.StringIO()
+        
+        # String stream logger for error logging
+        sh = logging.StreamHandler(self.error_stream)
+        sh.setLevel(logging.ERROR)
+        sh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        self.logger.addHandler(sh)
+
+        try:
+            self.consumer = KafkaConsumer(
+                self.in_topic_name,
+                bootstrap_servers=self.bootstrap_servers,
+                group_id = consumer_group_id,
+                request_timeout_ms=50000,
+                reconnect_backoff_max_ms=50,
+                session_timeout_ms=self.timeout*1000,
+                consumer_timeout_ms=self.timeout*1000,
+                value_deserializer=lambda x: json.loads(x.decode('utf-8'))
+                )
+        except KafkaConfigurationError as e:
+            self.logger.error('Could not create the Kafka consumer!')
+            self.logger.error(traceback.format_exc())
+            raise RuntimeError('Could not create the Kafka consumer!') from e
+
+        try:
+            self.producer = KafkaProducer(
+                bootstrap_servers=self.bootstrap_servers,
+                value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+                request_timeout_ms=10000,
+                reconnect_backoff_max_ms=100
+                )
+        except KafkaConfigurationError as e:
+            self.logger.error('Could not create the Kafka producer!')
+            self.logger.error(traceback.format_exc())
+            raise RuntimeError('Could not create the Kafka producer!') from e
+
+        self.logger.error = self._error_log_decorator(self.logger.error)
     
     def start_listening(self):
         while True:
             try:
                 for msg in self.consumer:
-                    process = subprocess.Popen(self.msg_to_command(msg),
-                        stdout=subprocess.PIPE, 
-                        stderr=subprocess.PIPE,
-                        universal_newlines=True)
-                    stdout, stderr = process.communicate()
-                    print(stdout.strip())
+                    self.logger.info('Got a new message: {}'.format(msg.value))
+                    cmd = self.msg_to_command(msg)
+                    if cmd:
+                        self.logger.info('Executing command')
+                        start_time = time.time()
+                        process = subprocess.Popen(cmd,
+                            stdout=subprocess.PIPE, 
+                            stderr=subprocess.PIPE,
+                            universal_newlines=True)
+                        stdout, stderr = process.communicate()
+                        end_time = time.time()
+                        self.logger.info('Finished executing command. Elapsed time: {}'.format(end_time-start_time))
+                        response = self.make_response(msg.value, end_time-start_time)
+                        if response:
+                            self.producer.send(self.out_topic_name, response)
+                            self.logger.info('Sending output: {}'.format(response))
+                        print(stdout.strip())
                 print('Idle ...')
                 time.sleep(self.timeout)
+            except FileNotFoundError as e:
+                self.logger.error('The construced command could not be executed!')
+                self.logger.error(e)
+            except KafkaTimeoutError as e:
+                self.logger.error('Timeout error during producer.send(), Potential causes: unable to fetch topic metadata, or unable to obtain memory buffer prior to configured max_block_ms')
+                self.logger.error(e)
             except KeyboardInterrupt:
                 break
 
     def msg_to_command(self, msg):
         return(['echo','{}'.format(msg.value)])
 
+    def make_response(self, in_msg, elapsed_time):
+        return None
+
+    def _error_log_decorator(self, func):
+        def wrapper(*args, **kwargs):
+            func(*args,**kwargs)
+            try:
+                self.producer.send(self.error_topic_name, self.error_stream.getvalue())
+                self.logger.info('Sending error report to Kafka')
+            except KafkaTimeoutError:
+                self.logger.warn('Timeout error during producer.send(), Potential causes: unable to fetch topic metadata, or unable to obtain memory buffer prior to configured max_block_ms! Error will not be sent to Kafka!')
+            self.error_stream.seek(0)
+            self.error_stream.truncate()
+        return wrapper
 
 def main():
     args = parser.parse_args()
-    kafka_runner = KafkaRunner(args.topic_name, args.bootstrap_servers)
+    kafka_runner = KafkaRunner(args.in_topic_name, args.out_topic_name, args.bootstrap_servers)
     kafka_runner.start_listening()
 
 if __name__=='__main__':
