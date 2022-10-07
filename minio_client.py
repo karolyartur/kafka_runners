@@ -15,7 +15,17 @@ parser = argparse.ArgumentParser(description="Minio client")
 parser.add_argument("credentials_path", type=str ,help="path to folder containing credentials")
 
 class MinioClient():
+    '''Minio client
+
+    Class for convenient interaction with the Minio object storage
+
+    Args:
+     - credentials_path (str): Path to the folder containing the credentials files (default is '../credentials')
+     - logger (logging.logger object): A logger can be passed, if the Minio client is used inside a class that has its own logger already (default is None which means a new logger will be created)
+    '''
     def __init__(self, credentials_path='../credentials', logger=None):
+        '''Constructor for Minio clients
+        '''
         if logger:
             self.logger = logger
         else:
@@ -66,6 +76,13 @@ class MinioClient():
                 self.logger.info('Connected to Minio!')
 
     def create_bucket(self, bucket):
+        '''Create a new bucket
+
+        Create a new bucket in the Minio storage. If the specified bucket already exists no new bucket will be created.
+
+        Args:
+         - bucket (str): Bucket name
+        '''
         if not self.client.bucket_exists(bucket):
             self.client.make_bucket(bucket)
             self.logger.info('Created bucket "{}"'.format(bucket))
@@ -73,6 +90,13 @@ class MinioClient():
             self.logger.info('Bucket "{}" already exists!'.format(bucket))
 
     def upload_file(self, bucket, minio_path, local_path):
+        '''Upload a single local file to the Minio object storage
+
+        Args:
+         - bucket (str): Name of the bucket to upload the file to
+         - minio_path (str): Path for the uploaded object inside the Minio storage (renaming the file is also allowed)
+         - local_path (str): Path for the local file to be uploaded
+        '''
         try:
             self.client.fput_object(bucket, minio_path, local_path)
         except S3Error as e:
@@ -82,6 +106,13 @@ class MinioClient():
             self.logger.info('Uploaded local file "{}" to bucket "{}" to location "{}"'.format(local_path, bucket, minio_path))
 
     def upload_directory(self, bucket, minio_path, local_path):
+        '''Upload an entire local directory to the Minio object storage recursively
+
+        Args:
+         - bucket (str): Name of the bucket to upload the directory to
+         - minio_path (str): Path for the uploaded object inside the Minio storage (renaming the directory is also allowed)
+         - local_path (str): Path for the local directory to be uploaded
+        '''
         if os.path.isdir(local_path):
             items = os.listdir(local_path)
             items.sort()
@@ -98,6 +129,13 @@ class MinioClient():
             self.logger.warn('Path "{}" not found! No upload is done!'.format(local_path))
 
     def download_file(self, bucket, minio_path, local_path):
+        '''Download a single file from the Minio object storage
+
+        Args:
+         - bucket (str): Name of the bucket to download the file from
+         - minio_path (str): Path of the object inside the Minio storage
+         - local_path (str): Path for the downloaded local file (renaming the file is also allowed)
+        '''
         try:
             self.client.fget_object(bucket, minio_path, local_path)
         except S3Error as e:
@@ -110,11 +148,22 @@ class MinioClient():
             self.logger.info('Downloaded file "{}" from bucket "{}" to local location "{}"'.format(minio_path, bucket, local_path))
 
     def download_directory(self, bucket, minio_path, local_path):
+        '''Download an entire directory from the Minio object storage
+
+        Args:
+         - bucket (str): Name of the bucket to download the directory from
+         - minio_path (str): Path of the object inside the Minio storage
+         - local_path (str): Path for the downloaded local directory (renaming the directory is also allowed)
+        '''
         for obj in self.client.list_objects(bucket, prefix=minio_path, recursive=True):
             self.download_file(bucket, obj.object_name, obj.object_name.replace(minio_path,local_path))
 
 
     def _read_credentials(self, credentials_path):
+        '''Read Minio credentials
+
+        For INTERNAL USE ONLY!
+        '''
         try:
             with open(os.path.join(credentials_path,'minio_credentials.json'),'r') as f:
                 credentials = json.loads(f.read())
@@ -128,6 +177,10 @@ class MinioClient():
             return credentials
 
     def _http_client(self, timeout=urllib3.Timeout.DEFAULT_TIMEOUT, retries=5):
+        '''Create HTTP client for Minio
+
+        For INTERNAL USE ONLY!
+        '''
         http_client = urllib3.PoolManager(
             timeout=timeout,
             retries=urllib3.Retry(

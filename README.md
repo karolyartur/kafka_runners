@@ -8,7 +8,7 @@ This repository hosts the specialized Kafka Runner software modules.
 
 A Kafka Runner listens to incoming messages in a Kafka topic, from the incoming messages constructs commands to be run in the command line, executes these commands and after the execution is complete it sends a response in an other Kafka topic.
 
-The script [kafka_runner.py](kafka_runner.py) defines the `KafkaRunner` class, which is the base class for all Kafka Runners.
+The script [kafka_runner.py](kafka_runner.py) defines the `KafkaRunner` class, which is the base class for all Kafka Runners. When creating your own Kafka Runner make it derive from this class. **All Kafka Runners should have their dedicated branches in the repository!**
 
 The `KafkaRunner` class provides the basic functionality:
  - a `consumer` to listen to incoming messages in a specified Kafka topic

@@ -16,10 +16,34 @@ parser.add_argument("bootstrap_servers", type=str, nargs='+', help="list of boot
 
 
 class KafkaRunner():
-    '''
-        Simple consumer for running command based on messages from Kafka
+    '''Base class for all Kafka Runners
+
+    Can be used directly but does not provide useful functionality (incoming messages are echoed in the console and no outgoing messages).
+    
+    Usage:
+        class MyNewKafkaRunner(KafkaRunner):
+            ...
+            def self.msg_to_command(self, msg):
+                ...
+            def self.make_response(self, in_msg, elapsed_time):
+                ...
+        
+        runner = MyNewKafkaRunner(...)
+        runner.start_listening()
+
+    Args:
+     - in_topic_name (str): Name of Kafka topic from which incoming messages will be read
+     - out_topic_name (str): Name of Kafka topic where outgoing messages will be sent to
+     - bootstrap_servers (list of stings): Address of Kafka bootstrap servers
+
+    Keyword args:
+     - consumer_group_id (str): ID of the Kafka consumer group for the consumer of the Kafka Runner (default is None meaning no consumer group is used)
+     - error_topic_name (str): Name of the Kafka topic to send error logs to (default is 'error.log')
+     - loglevel (logging.DEBUG/WARN/...): Logging level (default is logging.WARN meaning warnings and higher level logs will be reported)
     '''
     def __init__(self, in_topic_name, out_topic_name, bootstrap_servers, consumer_group_id=None, error_topic_name='error.log', loglevel=logging.WARN):
+        '''Constructor for Kafka Runners
+        '''
         self.timeout = 30
         self.in_topic_name = in_topic_name
         self.out_topic_name = out_topic_name
@@ -69,6 +93,10 @@ class KafkaRunner():
         self.logger.error = self._error_log_decorator(self.logger.error)
     
     def start_listening(self):
+        '''Start listening to incoming messages
+
+        This function should be called to use the Kafka Runner. It blocks until a KeyboardInterrupt is encountered
+        '''
         while True:
             try:
                 for msg in self.consumer:
@@ -101,12 +129,37 @@ class KafkaRunner():
                 break
 
     def msg_to_command(self, msg):
+        '''Convert incoming message to a command
+
+        This function should be overwritten in derived classes
+
+        Args:
+         - msg (Kafka message object): Incoming message (the contents can be accessed by msg.value, which is a string)
+
+        Returns:
+         - cmd (list of strings): Command to be executed by subprocess.Popen() (for example: ['echo', 'Hello World!'])
+        '''
         return(['echo','{}'.format(msg.value)])
 
     def make_response(self, in_msg, elapsed_time):
+        '''Construct a response
+
+        This function should be overwritten in derived classes
+
+        Args:
+         - in_msg (str): Contents of incoming message
+         - elapsed_time (float): Time needed for the execution of the command in seconds
+
+        Returns:
+         - response (dictionary): Response to be sent (if None, no response will be sent)
+        '''
         return None
 
     def _error_log_decorator(self, func):
+        '''Decorator for INTERNAL USE ONLY
+
+        Used for decorating the self.logger.error function to send error logs to a Kafka topic as well
+        '''
         def wrapper(*args, **kwargs):
             func(*args,**kwargs)
             try:
