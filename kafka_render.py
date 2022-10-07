@@ -20,6 +20,22 @@ parser.add_argument("-d","--debug",dest='debug', action='store_true', help="run 
 
 
 class KafkaRender(KafkaRunner):
+    '''Kafka Runner for rendering Blender scenes
+
+    Incoming Kafka messages are validated against the render_job.schema.json and outgoing messages are validated against the render_output.schema.json
+
+    Args:
+     - in_topic_name (str): Name of Kafka topic from which incoming messages will be read
+     - out_topic_name (str): Name of Kafka topic where outgoing messages will be sent to
+     - bootstrap_servers (list of stings): Address of Kafka bootstrap servers
+
+    Keyword args:
+     - blender (str): Path to the blender executable (default is 'blender')
+     - schema_path (str): Path to the folder containing the json schemas (default is '../json_schemas')
+     - consumer_group_id (str): ID of the Kafka consumer group for the consumer of the Kafka Runner (default is None meaning no consumer group is used)
+     - error_topic_name (str): Name of the Kafka topic to send error logs to (default is 'error.log')
+     - loglevel (logging.DEBUG/WARN/...): Logging level (default is logging.WARN meaning warnings and higher level logs will be reported)
+    '''
     def __init__(self,in_topic_name, out_topic_name, bootstrap_servers, blender = 'blender', schema_path='../json_schemas', consumer_group_id = None, error_topic_name='error.log', loglevel = logging.WARN):
         # Init base-class
         try:
@@ -64,6 +80,8 @@ class KafkaRender(KafkaRunner):
             self.render_output_schema = {}
 
     def msg_to_command(self, msg):
+        '''Convert incoming Kafka messages to a command for doing the rendering process with Blender
+        '''
         # Validate incoming message (is it valid JSON? Is it valid, according to the schema?)
         try:
             msg_json = json.loads(msg.value)
@@ -109,6 +127,8 @@ class KafkaRender(KafkaRunner):
                 # return ['sleep', '5']
 
     def make_response(self, in_msg, elapsed_time):
+        '''Construct a response after the rendering is completed
+        '''
         try:
             msg_json = json.loads(in_msg)
             resolver = RefResolver(base_uri='file://'+os.path.abspath(self.schema_path)+'/'+'render_job.schema.json', referrer=None)
