@@ -36,14 +36,17 @@ def parse_args():
 def main():
     args=parse_args()
     scene = bpy.context.scene
+    scene.render.filepath = os.path.join(args.output_dir, '')
     if args.gpu:
         scene.cycles.device = 'GPU'
     start_frame = args.frame_start # Set start frame
+    scene.bat_properties.save_annotation = True
     for i in range(args.frame_num):
         current_frame = start_frame + i
         scene.frame_set(current_frame) # Set frame
-        scene.render.filepath = os.path.join(args.output_dir, os.path.split(scene.render.frame_path(frame=current_frame))[-1])
-        bpy.ops.render.render(write_still=True) # Render photorealistic image
+        bpy.ops.render.bat_render_annotation() # Render annotation
+    scene.bat_properties.save_annotation = False
+    bpy.ops.wm.quit_blender()
 
 if __name__=='__main__':
     main()
