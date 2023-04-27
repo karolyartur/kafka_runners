@@ -14,4 +14,4 @@ COPY --from=staging /app /app
 # Enable venv
 ENV PATH="/app/venv/bin:$PATH"
 RUN apt-get update && apt-get install -y python3 && update-alternatives --install /app/venv/bin/python3 python3 /usr/bin/python3 2
-CMD cd kafka_runners && python3 kafka_render.py render.job render.out 10.8.8.226:9092
+CMD cd kafka_runners && python3 kafka_render.py $IN_KAFKA_TOPIC $OUT_KAFKA_TOPIC $KAFKA_BROKERS
