@@ -3,19 +3,13 @@ import sys
 
 def parse_args():
     '''
-    Parse commans line arguments (after -- that separates blender and Python arguments)
+    Parse command line arguments (after -- that separates blender and Python arguments)
     '''
     argv = sys.argv
     if "--" not in argv:
         argv = []  # as if no args are passed
     else:
         argv = argv[argv.index("--") + 1:]  # get all args after "--"
-
-    # When --help or no args are given, print this help
-    usage_text = (
-        "Run blender with this script:"
-        "  blender BLEND_FILE --python " + __file__ + " -- [options]"
-    )
 
     class Args():
         def __init__(self, frame_start=0, frame_num=1, gpu=False):
