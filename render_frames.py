@@ -1,7 +1,4 @@
-import argparse
 import bpy
-import bpy_extras
-import os
 import sys
 
 def parse_args():
@@ -20,27 +17,22 @@ def parse_args():
         "  blender BLEND_FILE --python " + __file__ + " -- [options]"
     )
 
+    class Args():
+        def __init__(self, frame_start=0, frame_num=1, gpu=False):
+            self.frame_start = frame_start
+            self.frame_num = frame_num
+            self.gpu = gpu
 
-    # Argument parser
-    parser = argparse.ArgumentParser(description=usage_text)
+    args = Args()
 
-    parser.add_argument(
-        "-fs", "--frame_start", dest="frame_start", type=int, required=False, default=0,
-        help="Start frame (type: int, default: 0) Number of frame from which rendering starts",
-    )
-
-    parser.add_argument(
-        "-fn", "--frame_num", dest="frame_num", type=int, required=False, default=1,
-        help="Number of frames to render (type: int, default: 1)",
-    )
-
-    parser.add_argument(
-        "-g", "--gpu", dest="gpu", action='store_true', default=False,
-        help="Use GPU",
-    )
-
-    args = parser.parse_args(argv)
-    
+    for element in argv:
+        if '-fs' in element:
+            args.frame_start = int(element.split(' ')[-1])
+        if '-fn' in element:
+            args.frame_num = int(element.split(' ')[-1])
+        if '--gpu' in element:
+            args.gpu = True
+   
     return args
 
 def main():
