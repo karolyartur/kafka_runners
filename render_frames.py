@@ -1,8 +1,11 @@
 import bpy
 import sys
 import os
+import logging
+import socket
+import io
 
-def parse_args():
+def parse_args(logger):
     '''
     Parse command line arguments (after -- that separates blender and Python arguments)
     '''
@@ -21,20 +24,36 @@ def parse_args():
 
     args = Args()
 
-    for element in argv:
-        if '-fs' in element:
-            args.frame_start = int(element.split(' ')[-1])
-        if '-fn' in element:
-            args.frame_num = int(element.split(' ')[-1])
-        if '--gpu' in element:
-            args.gpu = True
-        if '-o' in element:
-            args.output_dir = element.split(' ')[-1]
+    try:
+        for i,element in enumerate(argv):
+            if element == '-fs':
+                args.frame_start = int(argv[i+1])
+            if element == '-fn':
+                args.frame_num = int(argv[i+1])
+            if element == '--gpu':
+                args.gpu = True
+            if element == '-o':
+                args.output_dir = argv[i+1]
+    except ValueError:
+        logger.error('Invalid arguments passed to render_frames.py')
+        exit(0)
+    except IndexError:
+        logger.error('Invalid arguments passed to render_frames.py')
+        exit(0)
    
     return args
 
+def create_logger():
+    logger = logging.getLogger(__name__ + '@' + socket.gethostname())
+    sh = logging.StreamHandler(sys.stdout)
+    sh.setLevel(logging.ERROR)
+    sh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logger.addHandler(sh)
+    return logger
+
 def main():
-    args=parse_args()
+    logger = create_logger()
+    args=parse_args(logger)
     scene = bpy.context.scene
     if args.gpu:
         scene.cycles.device = 'GPU'
