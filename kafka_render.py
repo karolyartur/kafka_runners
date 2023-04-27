@@ -73,10 +73,10 @@ class KafkaRender(KafkaRunner):
             with open(schema_path, 'r') as f:
                 self.render_output_schema = json.loads(f.read())
         except FileNotFoundError:
-            self.logger.warn('JSON schema for Kafka message could not be found at path: "{}"\nIncoming messages will NOT be validated!'.format(schema_path))
+            self.logger.warn('JSON schema for Kafka message could not be found at path: "{}"\nOutgoing messages will NOT be validated!'.format(schema_path))
             self.render_output_schema = {}
         except JSONDecodeError:
-            self.logger.warn('JSON schema for Kafka message at path: "{}" could not be decoded (invalid JSON)\nIncoming messages will NOT be validated!'.format(schema_path))
+            self.logger.warn('JSON schema for Kafka message at path: "{}" could not be decoded (invalid JSON)\nOutgoing messages will NOT be validated!'.format(schema_path))
             self.render_output_schema = {}
 
     def msg_to_command(self, msg):
@@ -84,11 +84,15 @@ class KafkaRender(KafkaRunner):
         '''
         # Validate incoming message (is it valid JSON? Is it valid, according to the schema?)
         try:
-            msg_json = json.loads(msg.value)
+            msg_json = msg.value
+            if isinstance(msg_json, str):
+                msg_json = json.loads(msg_json)
             resolver = RefResolver(base_uri='file://'+os.path.abspath(self.schema_path)+'/'+'render_job.schema.json', referrer=None)
             validate(instance=msg_json, schema=self.render_job_schema, resolver=resolver)
         except JSONDecodeError:
             self.logger.warn('Message "{}" could not be decoded (invalid JSON)\nIgnoring message'.format(msg.value))
+        except TypeError as e:
+            self.logger.warn('Message "{}" could not be decoded (invalid input type for JSON decoding). {}\nIgnoring message'.format(msg.value, e))
         except ValidationError:
             self.logger.warn('Message "{}" failed JSON schema validation (used schema: {})\nIgnoring message'.format(msg.value, os.path.join(self.schema_path,'render_job.schema.json')))
         else:
@@ -124,19 +128,22 @@ class KafkaRender(KafkaRunner):
                     cmd = [self.blender, scene, '--background', '--python', 'render_frames.py', '--', '-fs {}'.format(frame_start), '-fn {}'.format(frame_num), '-o {}'.format(self.temp_render_output)]
                 self.logger.info('Command to be executed: {}'.format(cmd))
                 return cmd
-                # return ['sleep', '5']
 
     def make_response(self, in_msg, elapsed_time):
         '''Construct a response after the rendering is completed
         '''
         try:
-            msg_json = json.loads(in_msg)
+            msg_json = in_msg
+            if isinstance(msg_json, str):
+                msg_json = json.loads(msg_json)
             resolver = RefResolver(base_uri='file://'+os.path.abspath(self.schema_path)+'/'+'render_job.schema.json', referrer=None)
             validate(instance=msg_json, schema=self.render_job_schema, resolver=resolver)
+        except TypeError as e:
+            self.logger.warn('Message "{}" could not be decoded (invalid input type for JSON decoding). {}\nIgnoring message'.format(in_msg, e))
         except JSONDecodeError:
-            self.logger.warn('Message "{}" could not be decoded (invalid JSON)\nIgnoring message'.format(msg.value))
+            self.logger.warn('Message "{}" could not be decoded (invalid JSON)\nIgnoring message'.format(in_msg))
         except ValidationError:
-            self.logger.warn('Message "{}" failed JSON schema validation (used schema: {})\nIgnoring message'.format(msg.value, os.path.join(self.schema_path,'render_job.schema.json')))
+            self.logger.warn('Message "{}" failed JSON schema validation (used schema: {})\nIgnoring message'.format(in_msg, os.path.join(self.schema_path,'render_job.schema.json')))
         else:
             response = {}
             response['renderJob'] = msg_json
