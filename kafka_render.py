@@ -15,14 +15,15 @@ parser.add_argument("out_topic_name", type=str,help="out_topic name")
 parser.add_argument("bootstrap_servers", type=str, nargs='+', help="list of bootstrap servers")
 parser.add_argument("-g", "--group_id", dest='consumer_group_id', type=str, help="consumer group id", default=None)
 parser.add_argument("-b","--blender",dest='blender', type=str, help="path to blender executable", default='blender')
+parser.add_argument("-e","--error_topic_name",dest='error_topic_name', type=str, help="name of the Kafka topic to log errors to", default='error.log')
 parser.add_argument("-d","--debug",dest='debug', action='store_true', help="run the script in debug mode", default=False)
 
 
 class KafkaRender(KafkaRunner):
-    def __init__(self,in_topic_name, out_topic_name, bootstrap_servers, blender = 'blender', schema_path='../json_schemas', consumer_group_id = None, loglevel = logging.WARN):
+    def __init__(self,in_topic_name, out_topic_name, bootstrap_servers, blender = 'blender', schema_path='../json_schemas', consumer_group_id = None, error_topic_name='error.log', loglevel = logging.WARN):
         # Init base-class
         try:
-            super().__init__(in_topic_name, out_topic_name, bootstrap_servers, consumer_group_id=consumer_group_id, loglevel=loglevel)
+            super().__init__(in_topic_name, out_topic_name, bootstrap_servers, consumer_group_id=consumer_group_id, error_topic_name=error_topic_name, loglevel=loglevel)
         except RuntimeError:
             exit(0)
 
@@ -34,6 +35,9 @@ class KafkaRender(KafkaRunner):
 
         # Set local Blender exe path
         self.blender = blender
+        self.temp_render_output = os.path.join(os.path.dirname(os.path.abspath(__file__)),'tmp_render_out')
+        if not os.path.exists(self.temp_render_output):
+            os.mkdir(self.temp_render_output)
 
         # Load JSON schemas
         self.schema_path = schema_path
@@ -97,12 +101,12 @@ class KafkaRender(KafkaRunner):
                 if 'useGPU' in msg_json:
                     use_gpu = msg_json['useGPU']
                 if use_gpu:
-                    cmd = [self.blender, scene, '--background', '--python', 'render_frames.py', '--', '-fs {}'.format(frame_start), '-fn {}'.format(frame_num), '--gpu']
+                    cmd = [self.blender, scene, '--background', '--python', 'render_frames.py', '--', '-fs {}'.format(frame_start), '-fn {}'.format(frame_num), '-o {}'.format(self.temp_render_output), '--gpu']
                 else:
-                    cmd = [self.blender, scene, '--background', '--python', 'render_frames.py', '--', '-fs {}'.format(frame_start), '-fn {}'.format(frame_num)]
+                    cmd = [self.blender, scene, '--background', '--python', 'render_frames.py', '--', '-fs {}'.format(frame_start), '-fn {}'.format(frame_num), '-o {}'.format(self.temp_render_output)]
                 self.logger.info('Command to be executed: {}'.format(cmd))
-                #return cmd
-                return ['sleep', '5']
+                return cmd
+                # return ['sleep', '5']
 
     def make_response(self, in_msg, elapsed_time):
         try:
@@ -118,7 +122,22 @@ class KafkaRender(KafkaRunner):
             response['renderJob'] = msg_json
             response['timestamp'] = time.time()
             response['elapsedTime'] = elapsed_time
-            response['outputLocation'] = '.'
+            
+            if 'outputLocation' in msg_json:
+                output_location = os.path.normpath(msg_json['outputLocation']).split(os.path.sep)
+                output_bucket = output_location[0]
+                output_minio_path = os.path.sep.join(output_location[1:])
+                try:
+                    self.client.create_bucket(output_bucket)
+                    self.client.upload_directory(output_bucket, output_minio_path, self.temp_render_output)
+                except RuntimeError:
+                    self.logger.error('Could not upload rendered frames to Minio storage! (target bucket:{}, target Minio path: {}, local path:{})'.format(output_bucket,output_minio_path,self.temp_render_output))
+                else:
+                    self.logger.info('Removing temporary local copy of rendered frames')
+                    for fname in os.listdir(self.temp_render_output):
+                        os.remove(os.path.join(self.temp_render_output, fname))
+            else:
+                self.logger.warn('No output location specified in incoming message! Rendered frames will only be saved locally!')
             try:
                 resolver = RefResolver(base_uri='file://'+os.path.abspath(self.schema_path)+'/'+'render_output.schema.json', referrer=None)
                 validate(instance=response, schema=self.render_output_schema, resolver=resolver)
@@ -130,7 +149,7 @@ class KafkaRender(KafkaRunner):
 def main():
     logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     args = parser.parse_args()
-    renderer = KafkaRender(args.in_topic_name, args.out_topic_name, args.bootstrap_servers, args.blender, consumer_group_id=args.consumer_group_id, loglevel=logging.DEBUG if args.debug else logging.WARN)
+    renderer = KafkaRender(args.in_topic_name, args.out_topic_name, args.bootstrap_servers, args.blender, consumer_group_id=args.consumer_group_id, error_topic_name=args.error_topic_name, loglevel=logging.DEBUG if args.debug else logging.WARN)
     renderer.start_listening()
 
 if __name__=='__main__':
