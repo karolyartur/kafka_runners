@@ -19,14 +19,12 @@ parser.add_argument("-d","--debug",dest='debug', action='store_true', help="run 
 
 
 class KafkaRender(KafkaRunner):
-    ## --> error topic in kafka -->> docker env variable (docker container hash) unique ID for container name + timestamp
     def __init__(self,in_topic_name, out_topic_name, bootstrap_servers, blender = 'blender', schema_path='../json_schemas', consumer_group_id = None, loglevel = logging.WARN):
         # Init base-class
         try:
-            super().__init__(in_topic_name, out_topic_name, bootstrap_servers, consumer_group_id=consumer_group_id)
+            super().__init__(in_topic_name, out_topic_name, bootstrap_servers, consumer_group_id=consumer_group_id, loglevel=loglevel)
         except RuntimeError:
             exit(0)
-        self.logger.setLevel(loglevel)
 
         # Connect to Minio object storage
         try:
@@ -130,7 +128,7 @@ class KafkaRender(KafkaRunner):
                 return response
 
 def main():
-    logging.basicConfig()
+    logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     args = parser.parse_args()
     renderer = KafkaRender(args.in_topic_name, args.out_topic_name, args.bootstrap_servers, args.blender, consumer_group_id=args.consumer_group_id, loglevel=logging.DEBUG if args.debug else logging.WARN)
     renderer.start_listening()
