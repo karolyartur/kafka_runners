@@ -5,7 +5,7 @@ import logging
 import time
 from kafka_runner import KafkaRunner
 from minio_client import MinioClient
-from jsonschema import validate
+from jsonschema import validate, RefResolver
 from jsonschema.exceptions import ValidationError
 from json.decoder import JSONDecodeError
 
@@ -19,9 +19,8 @@ parser.add_argument("-d","--debug",dest='debug', action='store_true', help="run 
 
 
 class KafkaRender(KafkaRunner):
-    ## SCHEMA PATH FROM COMMAND LINE OR DIRECT ENV VAR? --> schema in git repo -->> docker run env var --> commit hash --> deploy key??
     ## --> error topic in kafka -->> docker env variable (docker container hash) unique ID for container name + timestamp
-    def __init__(self,in_topic_name, out_topic_name, bootstrap_servers, blender = 'blender', schema_path='../json_schemas/render_job.schema.json', consumer_group_id = None, loglevel = logging.WARN):
+    def __init__(self,in_topic_name, out_topic_name, bootstrap_servers, blender = 'blender', schema_path='../json_schemas', consumer_group_id = None, loglevel = logging.WARN):
         # Init base-class
         try:
             super().__init__(in_topic_name, out_topic_name, bootstrap_servers, consumer_group_id=consumer_group_id)
@@ -41,24 +40,37 @@ class KafkaRender(KafkaRunner):
         # Load JSON schemas
         self.schema_path = schema_path
         try:
-            with open(self.schema_path, 'r') as f:
-                self.schema = json.loads(f.read())
+            schema_path = os.path.join(self.schema_path,'render_job.schema.json')
+            with open(schema_path, 'r') as f:
+                self.render_job_schema = json.loads(f.read())
         except FileNotFoundError:
             self.logger.warn('JSON schema for Kafka message could not be found at path: "{}"\nIncoming messages will NOT be validated!'.format(schema_path))
-            self.schema = {}
+            self.render_job_schema = {}
         except JSONDecodeError:
             self.logger.warn('JSON schema for Kafka message at path: "{}" could not be decoded (invalid JSON)\nIncoming messages will NOT be validated!'.format(schema_path))
-            self.schema = {}
+            self.render_job_schema = {}
+
+        try:
+            schema_path = os.path.join(self.schema_path,'render_output.schema.json')
+            with open(schema_path, 'r') as f:
+                self.render_output_schema = json.loads(f.read())
+        except FileNotFoundError:
+            self.logger.warn('JSON schema for Kafka message could not be found at path: "{}"\nIncoming messages will NOT be validated!'.format(schema_path))
+            self.render_output_schema = {}
+        except JSONDecodeError:
+            self.logger.warn('JSON schema for Kafka message at path: "{}" could not be decoded (invalid JSON)\nIncoming messages will NOT be validated!'.format(schema_path))
+            self.render_output_schema = {}
 
     def msg_to_command(self, msg):
         # Validate incoming message (is it valid JSON? Is it valid, according to the schema?)
         try:
             msg_json = json.loads(msg.value)
-            validate(instance=msg_json, schema=self.schema)
+            resolver = RefResolver(base_uri='file://'+os.path.abspath(self.schema_path)+'/'+'render_job.schema.json', referrer=None)
+            validate(instance=msg_json, schema=self.render_job_schema, resolver=resolver)
         except JSONDecodeError:
             self.logger.warn('Message "{}" could not be decoded (invalid JSON)\nIgnoring message'.format(msg.value))
         except ValidationError:
-            self.logger.warn('Message "{}" failed JSON schema validation (used schema: {})\nIgnoring message'.format(msg.value, self.schema_path))
+            self.logger.warn('Message "{}" failed JSON schema validation (used schema: {})\nIgnoring message'.format(msg.value, os.path.join(self.schema_path,'render_job.schema.json')))
         else:
             # If the message is valid:
             frame_start = 0
@@ -97,18 +109,25 @@ class KafkaRender(KafkaRunner):
     def make_response(self, in_msg, elapsed_time):
         try:
             msg_json = json.loads(in_msg)
-            validate(instance=msg_json, schema=self.schema)
+            resolver = RefResolver(base_uri='file://'+os.path.abspath(self.schema_path)+'/'+'render_job.schema.json', referrer=None)
+            validate(instance=msg_json, schema=self.render_job_schema, resolver=resolver)
         except JSONDecodeError:
             self.logger.warn('Message "{}" could not be decoded (invalid JSON)\nIgnoring message'.format(msg.value))
         except ValidationError:
-            self.logger.warn('Message "{}" failed JSON schema validation (used schema: {})\nIgnoring message'.format(msg.value, self.schema_path))
+            self.logger.warn('Message "{}" failed JSON schema validation (used schema: {})\nIgnoring message'.format(msg.value, os.path.join(self.schema_path,'render_job.schema.json')))
         else:
             response = {}
-            response['RenderJob'] = msg_json
+            response['renderJob'] = msg_json
             response['timestamp'] = time.time()
             response['elapsedTime'] = elapsed_time
             response['outputLocation'] = '.'
-            return response
+            try:
+                resolver = RefResolver(base_uri='file://'+os.path.abspath(self.schema_path)+'/'+'render_output.schema.json', referrer=None)
+                validate(instance=response, schema=self.render_output_schema, resolver=resolver)
+            except ValidationError:
+                self.logger.warn('Response "{}" failed JSON schema validation (used schema: {})\nIgnoring response'.format(response, os.path.join(self.schema_path,'render_output.schema.json')))
+            else:
+                return response
 
 def main():
     logging.basicConfig()
