@@ -9,9 +9,15 @@ COPY . /app/kafka_runners
 RUN pip install -Ur kafka_runners/requirements.txt
 
 FROM nytimes/blender:3.1-cpu-ubuntu18.04 as runner
-WORKDIR /app/
+WORKDIR /app/kafka_runners
 COPY --from=staging /app /app
 # Enable venv
 ENV PATH="/app/venv/bin:$PATH"
+
+ENV IN_KAFKA_TOPIC=""
+ENV OUT_KAFKA_TOPIC="" 
+ENV KAFKA_BROKERS=""
+
 RUN apt-get update && apt-get install -y python3 && update-alternatives --install /app/venv/bin/python3 python3 /usr/bin/python3 2
-CMD cd kafka_runners && python3 kafka_render.py $IN_KAFKA_TOPIC $OUT_KAFKA_TOPIC $KAFKA_BROKERS
+#CMD cd kafka_runners && python3 kafka_render.py $IN_KAFKA_TOPIC $OUT_KAFKA_TOPIC $KAFKA_BROKERS
+ENTRYPOINT python3 kafka_render.py $IN_KAFKA_TOPIC $OUT_KAFKA_TOPIC $KAFKA_BROKERS

@@ -5,41 +5,94 @@
 stages:          # List of stages for jobs, and their order of execution
   - build
   - publish
-  - deploy-test
+  - init
+  - deploy
   - test
-  - deploy-prod
+  - prod-deploy
 
-build-job:       # This job runs in the build stage, which runs first.
+#shell executor van beállítva!
+build.job:
   stage: build
+  only:
+    - renderer
+    - renderer-gpu
+    - mrcnn-training
+    - mrcnn-training-gpu
   script:
-    - echo "Compiling the code..."
-    - docker build -t $TAG_COMMIT -t $TAG_LATEST ./ --no-cache
-
-publish:
-  image: docker:latest
+    - docker build -t kafkarunners:${CI_COMMIT_BRANCH} .
+publish-job:
   stage: publish
-  services:
-    - docker:dind
+  only:
+    - renderer
+    - renderer-gpu
+    - mrcnn-training
+    - mrcnn-training-gpu
   script:
-    - docker login -u gitlab-ci-token -p $CI_BUILD_TOKEN $CI_REGISTRY
-    - docker push $TAG_COMMIT
-    - docker push $TAG_LATEST
-
-integration-test-job:   # This job runs in the test stage.
-  stage: test    # It only starts when the job in the build stage completes successfully.
+    - docker login -p "$REGISTRY_PASSWORD" -u runner1 https://registry.hpc.ekik.uni-obuda.hu:5000
+    - echo "login to registry OK kafkarunners branch-> ${CI_COMMIT_BRANCH}"
+    #nincs meglevo cntainer, csak ekkor kell ez, ha futik.
+    #    - docker container commit $COMMIT_HASH kafkarunners:latest
+    #    - echo "commit done"
+    - docker image tag kafkarunners:${CI_COMMIT_BRANCH} registry.hpc.ekik.uni-obuda.hu:5000/kafkarunners:${CI_COMMIT_BRANCH}
+    - echo "tagging OK"
+    - docker image push registry.hpc.ekik.uni-obuda.hu:5000/kafkarunners:${CI_COMMIT_BRANCH}
+    - echo "push was successfull"
+#ez leskálázza szépen a service-t majd kinyiffantja, hogy ne akadjon össze semmi lehetőleg.
+init-job:
+  stage: init
+  only:
+    - renderer
+    - renderer-gpu
+    - mrcnn-training
+    - mrcnn-training-gpu
   script:
-    - echo "Running unit tests... This will take about 60 seconds."
-    - sleep 60
+    - whoami
+    - docker service update --force --update-parallelism 1 --update-delay 30s --replicas 0 fungirenderer || echo "there is no service like this"
+    - docker service rm fungirenderer || echo "there is no service like this"
+#telepítjük a szolgáltatást a megfelelő beállításokkal és indítjuk. A worktereknek hozzá kell tudniuk férni a registry-hez, ami be van állítva.
+deploy-job:
+  stage: deploy
+  only:
+    - renderer
+    - renderer-gpu
+    - mrcnn-training
+    - mrcnn-training-gpu
+  script:
+    - echo "-e IN_KAFKA_TOPIC=${IN_KAFKA_TOPIC} -e OUT_KAFKA_TOPIC=${OUT_KAFKA_TOPIC} -e KAFKA_BROKERS=${KAFKA_BROKERS}"
+    - docker service create --with-registry-auth --replicas 1 --name fungirenderer -e "IN_KAFKA_TOPIC=${IN_KAFKA_TOPIC}" --mount type=bind,source=/opt/fungi,destination=/app/credentials -e "OUT_KAFKA_TOPIC=${OUT_KAFKA_TOPIC}" -e "KAFKA_BROKERS=${KAFKA_BROKERS}" registry.hpc.ekik.uni-obuda.hu:5000/kafkarunners:${CI_COMMIT_BRANCH} 
+#Teszteléshez kellenek Artúr által krealt scriptek, lehetőleg bedrótozott legyen és csak össze kelljen hasonlítani egy "golden" kimenettel. ami lehet annyi, hogy kafka topicban létrejöttek a kimenetek, vagy egy success-t írt a kimenetre.
+test-job0:
+  stage: test
+  only:
+    - renderer
+    - renderer-gpu
+    - mrcnn-training
+    - mrcnn-training-gpu
+  script: 
+    #- export KIMENET="$(python3 kafka_test_producer.py --botstrap-server )"
+    - python3 kafka_test_producer.py -m {\"jobId\":0\,\"timestamp\":0\,\"scenePath\":\"minio.python.api.test/test.blend\"\,\"outputLocation\":\"minio.python.api.test/render_test\"\,\"startFrame\":111\,\"numFrames\":2} render.job 10.8.8.226:9092 || echo "no para ez meg dummy"
+#ellenorizni, hogy kerult-e feldolgozásra utaló új kafka maessage a pipelineba
+test-job1:
+  stage: test
+  needs: 
+    - test-job0
+  only:
+    - renderer
+    - renderer-gpu
+    - mrcnn-training
+    - mrcnn-training-gpu
+  script:
+    - timeout -t 30 kafkacat --help
 
-deploy-render-job:      # This job runs in the deploy stage.
-  stage: deploy-prod  # It only runs when *both* jobs in the test stage complete successfully.
-  environment: production
-  resource_group: production
+prod-deploy-job:
+  stage: prod-deploy
+  only:
+    - renderer
+    - renderer-gpu
+    - mrcnn-training
+    - mrcnn-training-gpu
   when: manual
-  script:
-    - echo "Deploying application..."
-    - echo "Application successfully deployed."
-deploy-test-job:
-  stage: deploy-test
-  script:
-    - echo "testing the deployment"
+  script: 
+    - docker service update --force --update-parallelism 1 --update-delay 30s --replicas 0 prodrunner || echo "there is no service like this"
+    - docker service rm prodrunner || echo "there is no service like this"
+    - docker service create --replicas 1 --name prodrunner alpine ping docker.com
