@@ -9,7 +9,7 @@ COPY . /app/kafka_runners
 RUN pip install -Ur kafka_runners/requirements.txt
 
 FROM nytimes/blender:3.1-gpu-ubuntu18.04 as runner
-WORKDIR /app/
+WORKDIR /app/kafka_runners
 COPY --from=staging /app /app
 # Enable venv
 ENV PATH="/app/venv/bin:$PATH"
