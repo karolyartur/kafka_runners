@@ -20,7 +20,7 @@ Where `IN.TOPIC.NAME` should be the name of the Kafka topic for incoming message
 
 An example command-line use, with an input topic name of `render.out`, an output topic name of `annotate.out` and bootstrap servers 10.8.8.200:9090 and 10.8.8.201:9094 would be
 ```bash
-python kafka_render.py render.out annotate.out 10.8.8.200:9090 10.8.8.201:9094
+python kafka_annotate.py render.out annotate.out 10.8.8.200:9090 10.8.8.201:9094
 ```
 
 Apart from these compulsory positional arguments the script can also be used with keyword arguments. These are the following:
@@ -31,7 +31,7 @@ Apart from these compulsory positional arguments the script can also be used wit
 
 Using the previous example, but with specifying the Blender executable path as `/home/user/blender/blender`, the consumer group ID as `my_consumer_group`, the error topic name as `annotate.errors` and running the script in debug mode would look like this:
 ```bash
-python kafka_render.py render.out annotate.out 10.8.8.200:9090 10.8.8.201:9094 -b /home/user/blender/blender -g my_consumer_group -e annotate.errors -d
+python kafka_annotate.py render.out annotate.out 10.8.8.200:9090 10.8.8.201:9094 -b /home/user/blender/blender -g my_consumer_group -e annotate.errors -d
 ```
 
 When the script is up and running you can start sending messages to the specified Kafka topic and wait for responses in the output topic. The annotations should be uploaded to the Minio object storage at the location specified in the render job part of the render output message or the render job message in case of direct annotation.
@@ -45,7 +45,7 @@ The json schemas are searched for at the `../json_schemas` location. Before runn
 When an incoming Kafka message is received, the requested Blender scene is downloaded from the Minio storage (to the location `scenes`). This **ONLY** happens if there is not a local copy of the scene already!
 When the scene is available, the [render_annotations.py](render_annotations.py) script is used with Blender to create the annotations. The constructed command has the general form:
 ```bash
-blender scene --background --python render_annotations.py -- args_for_render_annotations.py
+blender scene --python render_annotations.py -- args_for_render_annotations.py
 ```
 
 The annotations are saved at the `tmp_render_out` folder locally. When the whole annotation is finished, the contents of this folder are uploaded to the requested location in the Minio storage, and the local `tmp_render_out` folder is emptied. The output from the annotator (render output message) containing the time taken for the annotation process is also sent to the output topic.
