@@ -73,10 +73,10 @@ class KafkaAnnotate(KafkaRunner):
             with open(schema_path, 'r') as f:
                 self.render_output_schema = json.loads(f.read())
         except FileNotFoundError:
-            self.logger.warn('JSON schema for Kafka message could not be found at path: "{}"\nIncoming messages will NOT be validated!'.format(schema_path))
+            self.logger.warn('JSON schema for Kafka message could not be found at path: "{}"\nOutgoing messages will NOT be validated!'.format(schema_path))
             self.render_output_schema = {}
         except JSONDecodeError:
-            self.logger.warn('JSON schema for Kafka message at path: "{}" could not be decoded (invalid JSON)\nIncoming messages will NOT be validated!'.format(schema_path))
+            self.logger.warn('JSON schema for Kafka message at path: "{}" could not be decoded (invalid JSON)\nOutgoing messages will NOT be validated!'.format(schema_path))
             self.render_output_schema = {}
 
     def msg_to_command(self, msg):
@@ -134,9 +134,9 @@ class KafkaAnnotate(KafkaRunner):
             if 'useGPU' in msg_json:
                 use_gpu = msg_json['useGPU']
             if use_gpu:
-                cmd = [self.blender, scene, '--python', 'render_annotations.py', '--', '-fs {}'.format(frame_start), '-fn {}'.format(frame_num), '-o {}'.format(self.temp_render_output), '--gpu']
+                cmd = [self.blender, scene, '-y', '--python', 'render_annotations.py', '--', '-fs', '{}'.format(frame_start), '-fn', '{}'.format(frame_num), '-o', '{}'.format(self.temp_render_output), '--gpu']
             else:
-                cmd = [self.blender, scene, '--python', 'render_annotations.py', '--', '-fs {}'.format(frame_start), '-fn {}'.format(frame_num), '-o {}'.format(self.temp_render_output)]
+                cmd = [self.blender, scene, '-y', '--python', 'render_annotations.py', '--', '-fs', '{}'.format(frame_start), '-fn', '{}'.format(frame_num), '-o', '{}'.format(self.temp_render_output)]
             self.logger.info('Command to be executed: {}'.format(cmd))
             return cmd
 
