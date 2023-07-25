@@ -5,6 +5,7 @@ import logging
 import argparse
 import urllib3
 import inspect
+import s3fs
 import minio.helpers
 from minio import Minio
 from urllib3.exceptions import MaxRetryError
@@ -75,6 +76,7 @@ class MinioClient(metaclass= ClassPropertyMetaClass):
     _client = None
     _debug = True
     _raise_errors = True
+    _s3 = None
 
     @classproperty
     def logger(self):
@@ -156,6 +158,8 @@ class MinioClient(metaclass= ClassPropertyMetaClass):
                 access_key = credentials['accessKey']
             if 'secretKey' in credentials:
                 secret_key = credentials['secretKey']
+
+            self._s3 = s3fs.S3FileSystem(key=access_key, secret=secret_key, client_kwargs={'endpoint_url':credentials['url']})
 
             try:
                 self.client = Minio(
