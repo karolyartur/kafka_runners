@@ -4,7 +4,7 @@ import os
 import datetime
 import torch
 import torchvision
-from datasets import InstanceSegmentationDataset, data_paths_from_root_path
+from datasets import InstanceSegmentationDataset
 from utils import collate_fn
 from engine import train_one_epoch, evaluate
 
@@ -23,9 +23,11 @@ class MRCNNTrainer():
      - output_path (str): Path to the folder where the output of the training will be saved, default is "training_output"
      - logger (logging.logger object): A logger can be passed, if the MRCNNTrainer is used inside a class that has its own logger already (default is None which means a new logger will be created)
     '''
-    def __init__(self, config_file_path, train_path, valid_path, model_name='model', output_path='training_output', logger=None):
+    def __init__(self, s3, config_file_path, train_path, valid_path, model_name='model', output_path='training_output', logger=None):
         '''Constructor for MRCNNTrainer
         '''
+        self.s3 = s3
+
         if logger:
             self.logger = logger
         else:
@@ -87,7 +89,7 @@ class MRCNNTrainer():
                 if config_file_path:
                     i_self.config_file_path = config_file_path
                     try:
-                        with open(config_file_path, 'r') as f:
+                        with self.s3.open(config_file_path, 'rb') as f:
                             configs = yaml.safe_load(f)
                             if configs:
                                 # Configs are loaded as a Python dictionary
@@ -116,6 +118,7 @@ class MRCNNTrainer():
         
         # Create config
         self.config = Configs(config_file_path)
+        self.logger.info('Loaded configs from "{}"'.format(config_file_path))
 
     def _prepare_dataset(self, path, batch_size, shuffle=False, num_workers=0):
         '''Create, prepare and return dataset
@@ -126,7 +129,8 @@ class MRCNNTrainer():
          - shuffle (bool): Retrieve samples in random order
          - num_workers (int): Number of parallel workers for data loading, (default is 0, meaning no parallel workers)
         '''
-        dataset = InstanceSegmentationDataset(data_paths_from_root_path(path))
+        self.logger.info('Preparing dataset: "{}"'.format(path))
+        dataset = InstanceSegmentationDataset(path, self.s3, logger=self.logger)
         data_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers, collate_fn=collate_fn)
         return data_loader
     
@@ -146,7 +150,8 @@ class MRCNNTrainer():
             # evaluate on the test dataset
             evaluate(self.model, self.valid_dataset, device=self.device)
             if epoch % self.config.SAVE_FREQ == 0:
-                torch.save(self.model.state_dict(), os.path.join(self.output_path, f"maskrcnn_weights{str(datetime.datetime.now()).split('.')[0].replace(' ','_')}.pth"))
+                with self.s3.open(os.path.join(self.output_path, f"maskrcnn_weights{str(datetime.datetime.now()).split('.')[0].replace(' ','_')}.pth"), 'wb') as f:
+                    torch.save(self.model.state_dict(), f)
 
 
 if __name__=='__main__':

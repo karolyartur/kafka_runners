@@ -49,7 +49,7 @@ class KafkaTrainer(KafkaRunner):
         except (RuntimeError,ValueError):
             exit(0)
 
-        self.temp_training_output = os.path.join(os.path.dirname(os.path.abspath(__file__)),'training_output')
+        # self.temp_training_output = os.path.join(os.path.dirname(os.path.abspath(__file__)),'training_output')
 
         # Load JSON schemas
         self.schema_path = schema_path
@@ -98,104 +98,98 @@ class KafkaTrainer(KafkaRunner):
 
             #Set defaults of message
             model_name = 'model'
-            epochs = 1
 
             # Get data from Minio storage
             # Download training data
-            try:
-                train_data_path = os.path.normpath(msg_json['trainDataPath']).split(os.path.sep)
-                train_data_bucket = train_data_path[0]
-                train_data_name = train_data_path[-1]
-                train_data_path = os.path.sep.join(train_data_path[1:])
-                if not os.path.exists('train'):
-                    os.mkdir('train')
-                if not train_data_name in os.listdir('train'):
-                    self.client.download_directory(train_data_bucket, train_data_path, os.path.join('train',train_data_name))
-                train = os.path.join('train', train_data_name)
-            except RuntimeError:
-                self.logger.warning('Could not locate and/or download training data from "{}" bucket and location "{}". Training will NOT start!'.format(train_data_bucket,train_data_path))
-                return None
+            # try:
+            #     train_data_path = os.path.normpath(msg_json['trainDataPath']).split(os.path.sep)
+            #     train_data_bucket = train_data_path[0]
+            #     train_data_name = train_data_path[-1]
+            #     train_data_path = os.path.sep.join(train_data_path[1:])
+            #     if not os.path.exists('train'):
+            #         os.mkdir('train')
+            #     if not train_data_name in os.listdir('train'):
+            #         self.client.download_directory(train_data_bucket, train_data_path, os.path.join('train',train_data_name))
+            #     train = os.path.join('train', train_data_name)
+            # except RuntimeError:
+            #     self.logger.warning('Could not locate and/or download training data from "{}" bucket and location "{}". Training will NOT start!'.format(train_data_bucket,train_data_path))
+            #     return None
+            train = os.path.normpath(msg_json['trainDataPath'])
             
             # Download validation data
-            try:
-                valid_data_path = os.path.normpath(msg_json['validDataPath']).split(os.path.sep)
-                valid_data_bucket = valid_data_path[0]
-                valid_data_name = valid_data_path[-1]
-                valid_data_path = os.path.sep.join(valid_data_path[1:])
-                if not os.path.exists('valid'):
-                    os.mkdir('valid')
-                if not valid_data_name in os.listdir('valid'):
-                    self.client.download_directory(valid_data_bucket, valid_data_path, os.path.join('valid',valid_data_name))
-                valid = os.path.join('valid', valid_data_name)
-            except RuntimeError:
-                self.logger.warning('Could not locate and/or download validation data from "{}" bucket and location "{}". Training will NOT start!'.format(valid_data_bucket,valid_data_path))
-                return None
+            # try:
+            #     valid_data_path = os.path.normpath(msg_json['validDataPath']).split(os.path.sep)
+            #     valid_data_bucket = valid_data_path[0]
+            #     valid_data_name = valid_data_path[-1]
+            #     valid_data_path = os.path.sep.join(valid_data_path[1:])
+            #     if not os.path.exists('valid'):
+            #         os.mkdir('valid')
+            #     if not valid_data_name in os.listdir('valid'):
+            #         self.client.download_directory(valid_data_bucket, valid_data_path, os.path.join('valid',valid_data_name))
+            #     valid = os.path.join('valid', valid_data_name)
+            # except RuntimeError:
+            #     self.logger.warning('Could not locate and/or download validation data from "{}" bucket and location "{}". Training will NOT start!'.format(valid_data_bucket,valid_data_path))
+            #     return None
+            valid = os.path.normpath(msg_json['validDataPath'])
             
             # Download config file
-            try:
-                config_file_path = os.path.normpath(msg_json['configFilePath']).split(os.path.sep)
-                config_file_bucket = config_file_path[0]
-                config_file_name = config_file_path[-1]
-                config_file_path = os.path.sep.join(config_file_path[1:])
-                if not os.path.exists('config'):
-                    os.mkdir('config')
-                if not config_file_name in os.listdir('config'):
-                    self.client.download_file(config_file_bucket, config_file_path, os.path.join('config',config_file_name))
-                config = os.path.join('config', config_file_name)
-            except RuntimeError:
-                self.logger.warning('Could not locate and/or download configuration file from "{}" bucket and location "{}". Training will NOT start!'.format(config_file_bucket,config_file_path))
-                return None
+            # try:
+            #     config_file_path = os.path.normpath(msg_json['configFilePath']).split(os.path.sep)
+            #     config_file_bucket = config_file_path[0]
+            #     config_file_name = config_file_path[-1]
+            #     config_file_path = os.path.sep.join(config_file_path[1:])
+            #     if not os.path.exists('config'):
+            #         os.mkdir('config')
+            #     if not config_file_name in os.listdir('config'):
+            #         self.client.download_file(config_file_bucket, config_file_path, os.path.join('config',config_file_name))
+            #     config = os.path.join('config', config_file_name)
+            # except RuntimeError:
+            #     self.logger.warning('Could not locate and/or download configuration file from "{}" bucket and location "{}". Training will NOT start!'.format(config_file_bucket,config_file_path))
+            #     return None
+            config = os.path.normpath(msg_json['configFilePath'])
 
             # Download class info
-            if 'classInfoFilePath' in msg_json:
-                if msg_json['classInfoFilePath'] == "":
-                    class_info = None
-                else:
-                    try:
-                        class_info_file_path = os.path.normpath(msg_json['classInfoFilePath']).split(os.path.sep)
-                        class_info_file_bucket = class_info_file_path[0]
-                        class_info_file_name = class_info_file_path[-1]
-                        class_info_file_path = os.path.sep.join(class_info_file_path[1:])
-                        if not os.path.exists('config'):
-                            os.mkdir('config')
-                        if not class_info_file_name in os.listdir('config'):
-                            self.client.download_file(class_info_file_bucket, class_info_file_path, os.path.join('config',class_info_file_name))
-                        with open(os.path.join('config', class_info_file_name),'r') as f:
-                            class_info = yaml.safe_load(f)
-                            if not type(class_info) == list and not class_info is None:
-                                self.logger.warning('Class info MUST be of type "list". Training will NOT start!'.format(class_info_file_bucket,class_info_file_path))
-                                return None
-                    except RuntimeError:
-                        self.logger.warning('Could not locate and/or download class info file from "{}" bucket and location "{}". Training will NOT start!'.format(class_info_file_bucket,class_info_file_path))
-                        return None
-                    except FileNotFoundError:
-                        self.logger.warning('Could not find the class info file file at {}. Training will NOT start!'.format(os.path.join('config', class_info_file_name)))
-                        return None
-                    except yaml.YAMLError:
-                        self.logger.warning('Could not load the class info file at {}. Invalid YAML! Training will NOT start!'.format(os.path.join('config', class_info_file_name)))
-                        return None
-            else:
-                class_info = None
+            # if 'classInfoFilePath' in msg_json:
+            #     if msg_json['classInfoFilePath'] == "":
+            #         class_info = None
+            #     else:
+            #         try:
+            #             class_info_file_path = os.path.normpath(msg_json['classInfoFilePath']).split(os.path.sep)
+            #             class_info_file_bucket = class_info_file_path[0]
+            #             class_info_file_name = class_info_file_path[-1]
+            #             class_info_file_path = os.path.sep.join(class_info_file_path[1:])
+            #             if not os.path.exists('config'):
+            #                 os.mkdir('config')
+            #             if not class_info_file_name in os.listdir('config'):
+            #                 self.client.download_file(class_info_file_bucket, class_info_file_path, os.path.join('config',class_info_file_name))
+            #             with open(os.path.join('config', class_info_file_name),'r') as f:
+            #                 class_info = yaml.safe_load(f)
+            #                 if not type(class_info) == list and not class_info is None:
+            #                     self.logger.warning('Class info MUST be of type "list". Training will NOT start!'.format(class_info_file_bucket,class_info_file_path))
+            #                     return None
+            #         except RuntimeError:
+            #             self.logger.warning('Could not locate and/or download class info file from "{}" bucket and location "{}". Training will NOT start!'.format(class_info_file_bucket,class_info_file_path))
+            #             return None
+            #         except FileNotFoundError:
+            #             self.logger.warning('Could not find the class info file file at {}. Training will NOT start!'.format(os.path.join('config', class_info_file_name)))
+            #             return None
+            #         except yaml.YAMLError:
+            #             self.logger.warning('Could not load the class info file at {}. Invalid YAML! Training will NOT start!'.format(os.path.join('config', class_info_file_name)))
+            #             return None
+            # else:
+            #     class_info = None
 
             # Construct and return command if data is ready
             if 'modelName' in msg_json:
                 model_name = msg_json['modelName']
-            if 'epochs' in msg_json:
-                epochs = msg_json['epochs']
-            if 'initWeights' in msg_json:
-                init_with = msg_json['initWeights']
-                if not init_with in ['coco', 'imagenet', 'last']:
-                    self.logger.warning('Initial weights MUST either be "coco", "imagenet" or "last", but  {} was provided. Using "coco" instead'.format(init_with))
-                    init_with = 'coco'
-            if 'layers' in msg_json:
-                layers = msg_json['layers']
 
-            output_path = os.path.split(self.temp_training_output)[-1]
-            if not os.path.exists(output_path):
-                os.mkdir(output_path)
+            # output_path = os.path.split(self.temp_training_output)[-1]
+            output_path = os.path.normpath(msg_json['outputLocation'])
+            # if not os.path.exists(output_path):
+            #     os.mkdir(output_path)
 
             start_time = time.time()
-            trainer = MRCNNTrainer(config, train, valid, model_name=model_name, output_path=output_path,logger=self.logger)
+            trainer = MRCNNTrainer(self.client._s3, config, train, valid, model_name=model_name, output_path=output_path,logger=self.logger)
             trainer.train()
             end_time = time.time()
             self.elapsed_time = end_time-start_time
@@ -224,24 +218,24 @@ class KafkaTrainer(KafkaRunner):
             response['timestamp'] = time.time()
             response['elapsedTime'] = self.elapsed_time
             
-            if 'outputLocation' in msg_json:
-                output_location = os.path.normpath(msg_json['outputLocation']).split(os.path.sep)
-                output_bucket = output_location[0]
-                output_minio_path = os.path.sep.join(output_location[1:])
-                try:
-                    self.client.create_bucket(output_bucket)
-                    self.client.upload_directory(output_bucket, output_minio_path, self.temp_training_output)
-                except RuntimeError:
-                    self.logger.error('Could not upload training output to Minio storage! (target bucket:{}, target Minio path: {}, local path:{})'.format(output_bucket,output_minio_path,self.temp_training_output))
-                else:
-                    self.logger.info('Removing temporary local copy of training output')
-                    for element in os.listdir(self.temp_training_output):
-                        if os.path.isfile(os.path.join(self.temp_training_output, element)):
-                            os.remove(os.path.join(self.temp_training_output, element))
-                        elif os.path.isdir(os.path.join(self.temp_training_output, element)):
-                            shutil.rmtree(os.path.join(self.temp_training_output, element), ignore_errors=True)
-            else:
-                self.logger.warning('No output location specified in incoming message! Training output will only be saved locally!')
+            # if 'outputLocation' in msg_json:
+            #     output_location = os.path.normpath(msg_json['outputLocation']).split(os.path.sep)
+            #     output_bucket = output_location[0]
+            #     output_minio_path = os.path.sep.join(output_location[1:])
+            #     try:
+            #         self.client.create_bucket(output_bucket)
+            #         self.client.upload_directory(output_bucket, output_minio_path, self.temp_training_output)
+            #     except RuntimeError:
+            #         self.logger.error('Could not upload training output to Minio storage! (target bucket:{}, target Minio path: {}, local path:{})'.format(output_bucket,output_minio_path,self.temp_training_output))
+            #     else:
+            #         self.logger.info('Removing temporary local copy of training output')
+            #         for element in os.listdir(self.temp_training_output):
+            #             if os.path.isfile(os.path.join(self.temp_training_output, element)):
+            #                 os.remove(os.path.join(self.temp_training_output, element))
+            #             elif os.path.isdir(os.path.join(self.temp_training_output, element)):
+            #                 shutil.rmtree(os.path.join(self.temp_training_output, element), ignore_errors=True)
+            # else:
+            #     self.logger.warning('No output location specified in incoming message! Training output will only be saved locally!')
             try:
                 resolver = RefResolver(base_uri='file://'+os.path.abspath(self.schema_path)+'/'+'training_output.schema.json', referrer=None)
                 validate(instance=response, schema=self.training_output_schema, resolver=resolver)
