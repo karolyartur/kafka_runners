@@ -22,7 +22,7 @@ parser.add_argument("-d","--debug",dest='debug', action='store_true', help="run 
 
 
 class KafkaTrainer(KafkaRunner):
-    '''Kafka Trainer for training Mask-RCNN models
+    '''Kafka Trainer for training DL models
 
     Incoming Kafka messages are validated against the training_job.schema.json and outgoing messages are validated against the training_output.schema.json
 
@@ -58,10 +58,10 @@ class KafkaTrainer(KafkaRunner):
             with open(schema_path, 'r') as f:
                 self.training_job_schema = json.loads(f.read())
         except FileNotFoundError:
-            self.logger.warn('JSON schema for Kafka message could not be found at path: "{}"\nIncoming messages will NOT be validated!'.format(schema_path))
+            self.logger.warning('JSON schema for Kafka message could not be found at path: "{}"\nIncoming messages will NOT be validated!'.format(schema_path))
             self.training_job_schema = {}
         except JSONDecodeError:
-            self.logger.warn('JSON schema for Kafka message at path: "{}" could not be decoded (invalid JSON)\nIncoming messages will NOT be validated!'.format(schema_path))
+            self.logger.warning('JSON schema for Kafka message at path: "{}" could not be decoded (invalid JSON)\nIncoming messages will NOT be validated!'.format(schema_path))
             self.training_job_schema = {}
 
         try:
@@ -69,10 +69,10 @@ class KafkaTrainer(KafkaRunner):
             with open(schema_path, 'r') as f:
                 self.training_output_schema = json.loads(f.read())
         except FileNotFoundError:
-            self.logger.warn('JSON schema for Kafka message could not be found at path: "{}"\nOutgoing messages will NOT be validated!'.format(schema_path))
+            self.logger.warning('JSON schema for Kafka message could not be found at path: "{}"\nOutgoing messages will NOT be validated!'.format(schema_path))
             self.training_output_schema = {}
         except JSONDecodeError:
-            self.logger.warn('JSON schema for Kafka message at path: "{}" could not be decoded (invalid JSON)\nOutgoing messages will NOT be validated!'.format(schema_path))
+            self.logger.warning('JSON schema for Kafka message at path: "{}" could not be decoded (invalid JSON)\nOutgoing messages will NOT be validated!'.format(schema_path))
             self.training_output_schema = {}
 
     def msg_to_command(self, msg):
@@ -86,20 +86,17 @@ class KafkaTrainer(KafkaRunner):
             resolver = RefResolver(base_uri='file://'+os.path.abspath(self.schema_path)+'/'+'training_job.schema.json', referrer=None)
             validate(instance=msg_json, schema=self.training_job_schema, resolver=resolver)
         except JSONDecodeError:
-            self.logger.warn('Message "{}" could not be decoded (invalid JSON)\nIgnoring message'.format(msg.value))
+            self.logger.warning('Message "{}" could not be decoded (invalid JSON)\nIgnoring message'.format(msg.value))
         except TypeError as e:
-            self.logger.warn('Message "{}" could not be decoded (invalid input type for JSON decoding). {}\nIgnoring message'.format(msg.value, e))
+            self.logger.warning('Message "{}" could not be decoded (invalid input type for JSON decoding). {}\nIgnoring message'.format(msg.value, e))
         except ValidationError:
-            self.logger.warn('Message "{}" failed JSON schema validation (used schema: {})\nIgnoring message'.format(msg.value, os.path.join(self.schema_path,'training_job.schema.json')))
+            self.logger.warning('Message "{}" failed JSON schema validation (used schema: {})\nIgnoring message'.format(msg.value, os.path.join(self.schema_path,'training_job.schema.json')))
         else:
             # If the message is valid:
 
             #Set defaults of message
             model_name = 'model'
-            class_info = None
             epochs = 1
-            init_with = 'coco'
-            layers = 'heads'
 
             # Get data from Minio storage
             # Download training data
@@ -196,8 +193,8 @@ class KafkaTrainer(KafkaRunner):
                 os.mkdir(output_path)
 
             start_time = time.time()
-            trainer = MRCNNTrainer(config, train, valid, cls_info=class_info, model_name=model_name, output_path=output_path,logger=self.logger)
-            trainer.train(init_with=init_with, epochs=epochs, layers=layers)
+            trainer = MRCNNTrainer(config, train, valid, model_name=model_name, output_path=output_path,logger=self.logger)
+            trainer.train()
             end_time = time.time()
             self.elapsed_time = end_time-start_time
             cmd = ['echo','']
@@ -214,11 +211,11 @@ class KafkaTrainer(KafkaRunner):
             resolver = RefResolver(base_uri='file://'+os.path.abspath(self.schema_path)+'/'+'training_job.schema.json', referrer=None)
             validate(instance=msg_json, schema=self.training_job_schema, resolver=resolver)
         except TypeError as e:
-            self.logger.warn('Message "{}" could not be decoded (invalid input type for JSON decoding). {}\nIgnoring message'.format(in_msg, e))
+            self.logger.warning('Message "{}" could not be decoded (invalid input type for JSON decoding). {}\nIgnoring message'.format(in_msg, e))
         except JSONDecodeError:
-            self.logger.warn('Message "{}" could not be decoded (invalid JSON)\nIgnoring message'.format(in_msg))
+            self.logger.warning('Message "{}" could not be decoded (invalid JSON)\nIgnoring message'.format(in_msg))
         except ValidationError:
-            self.logger.warn('Message "{}" failed JSON schema validation (used schema: {})\nIgnoring message'.format(in_msg, os.path.join(self.schema_path,'training_job.schema.json')))
+            self.logger.warning('Message "{}" failed JSON schema validation (used schema: {})\nIgnoring message'.format(in_msg, os.path.join(self.schema_path,'training_job.schema.json')))
         else:
             response = {}
             response['trainingJob'] = msg_json
@@ -242,12 +239,12 @@ class KafkaTrainer(KafkaRunner):
                         elif os.path.isdir(os.path.join(self.temp_training_output, element)):
                             shutil.rmtree(os.path.join(self.temp_training_output, element), ignore_errors=True)
             else:
-                self.logger.warn('No output location specified in incoming message! Training output will only be saved locally!')
+                self.logger.warning('No output location specified in incoming message! Training output will only be saved locally!')
             try:
                 resolver = RefResolver(base_uri='file://'+os.path.abspath(self.schema_path)+'/'+'training_output.schema.json', referrer=None)
                 validate(instance=response, schema=self.training_output_schema, resolver=resolver)
             except ValidationError:
-                self.logger.warn('Response "{}" failed JSON schema validation (used schema: {})\nIgnoring response'.format(response, os.path.join(self.schema_path,'training_output.schema.json')))
+                self.logger.warning('Response "{}" failed JSON schema validation (used schema: {})\nIgnoring response'.format(response, os.path.join(self.schema_path,'training_output.schema.json')))
             else:
                 return response
 

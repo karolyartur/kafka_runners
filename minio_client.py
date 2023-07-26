@@ -284,7 +284,7 @@ class MinioClient(metaclass= ClassPropertyMetaClass):
         try:
             for o in self.list_objects(bucket, '', True):
                 if minio_path in o or re.search(minio_path, o):
-                    self.client.fget_object(bucket, o, os.path.join(local_path, o))
+                    self.client.fget_object(bucket, o, local_path)
         except S3Error as e:
             self.logger.error('Could not download file "{}" from bucket "{}"'.format(minio_path, bucket))
             if self.raise_errors:
@@ -306,7 +306,10 @@ class MinioClient(metaclass= ClassPropertyMetaClass):
          - local_path (str): Path for the downloaded local directory
         '''
         for obj in self.client.list_objects(bucket, prefix=minio_path, recursive=True):
-            self.download_file(bucket, obj.object_name,local_path)
+            path_list = obj.object_name.split(os.path.sep)
+            path_list[0] = local_path
+            full_path = os.path.join(*path_list)
+            self.download_file(bucket, obj.object_name, full_path)
 
 
     @classmethod
