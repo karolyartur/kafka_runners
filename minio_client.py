@@ -159,7 +159,7 @@ class MinioClient(metaclass= ClassPropertyMetaClass):
             if 'secretKey' in credentials:
                 secret_key = credentials['secretKey']
 
-            self._s3 = s3fs.S3FileSystem(key=access_key, secret=secret_key, client_kwargs={'endpoint_url':credentials['url']})
+            self._s3 = s3fs.S3FileSystem(key=access_key, secret=secret_key, client_kwargs={'endpoint_url':credentials['url']}, use_listings_cache=False)
 
             try:
                 self.client = Minio(
