@@ -41,15 +41,18 @@ class MRCNNTrainer():
         try:
             # Read the configs from the configuration file
             self._read_configs(config_file_path)  # TODO: Add to configs: backbone, weights, anchors etc
-
-            # Prepare datasets
-            self.train_dataset = self._prepare_dataset(self.train_path, self.config.BATCH_SIZE, shuffle=True)
-            self.valid_dataset = self._prepare_dataset(self.valid_path, self.config.BATCH_SIZE)
-
         except FileNotFoundError as e:
             raise RuntimeError('Could not find the configuration file at {}'.format(config_file_path)) from e
         except yaml.YAMLError as e:
             raise RuntimeError('Could not load the configuration file at {}. Invalid YAML!'.format(config_file_path)) from e
+
+        try:
+            # Prepare datasets
+            self.train_dataset = self._prepare_dataset(self.train_path, self.config.BATCH_SIZE, shuffle=True)
+            self.valid_dataset = self._prepare_dataset(self.valid_path, self.config.BATCH_SIZE)
+        except FileNotFoundError as e:
+            raise RuntimeError('Could not prepare dataset!') from e
+
 
         # Create model
         self.model = torchvision.models.detection.maskrcnn_resnet50_fpn_v2(num_classes=self.config.NUM_CLASSES, box_detections_per_img=self.config.MAX_DETS)
