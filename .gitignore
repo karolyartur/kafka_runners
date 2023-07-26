@@ -1,3 +1,8 @@
 __pycache__/*
 scenes/*
 tmp_render_out/*
+train/*
+valid/*
+config/*
+training_output/*
+*.h5
