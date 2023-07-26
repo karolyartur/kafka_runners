@@ -12,13 +12,13 @@ stages:          # List of stages for jobs, and their order of execution
 build.job:
   stage: build
   only:
-    - mrcnn-training
+    - mrcnn-training-gpu
   script:
     - docker build -t kafkarunners:${CI_COMMIT_BRANCH} .
 publish-job:
   stage: publish
   only:
-    - mrcnn-training
+    - mrcnn-training-gpu
   script:
     - docker login -p "$REGISTRY_PASSWORD" -u runner1 https://registry.hpc.ekik.uni-obuda.hu:5000
     - echo "login to registry OK kafkarunners branch-> ${CI_COMMIT_BRANCH}"
@@ -33,7 +33,7 @@ publish-job:
 init-job:
   stage: init
   only:
-    - mrcnn-training
+    - mrcnn-training-gpu
   script:
     - whoami
     - docker service update --force --update-parallelism 1 --update-delay 30s --replicas 0 ${CI_COMMIT_BRANCH}  || echo "there is no service like this"
@@ -42,7 +42,7 @@ init-job:
 deploy-job:
   stage: deploy
   only:
-    - mrcnn-training
+    - mrcnn-training-gpu
   script:
     - echo "-e IN_KAFKA_TOPIC=${TRAINER_CPU_JOB} -e OUT_KAFKA_TOPIC=${TRAINER_CPU_OUT} -e KAFKA_BROKERS=${KAFKA_BROKERS}"
     - docker service create --with-registry-auth --replicas 1 --name ${CI_COMMIT_BRANCH} --generic-resource "NVIDIA-GPU=1" --mount type=bind,source=/tmp/.X11-unix,destination=/tmp/.X11-unix -e "XAUTHORITY=/tmp/.docker.xauth" --mount type=bind,source=/tmp/.docker.xauth,destination=/tmp/.docker.xauth -e DISPLAY=:0 -e "NVIDIA_DRIVER_CAPABILITIES=compute,utility,display,video" --mount type=tmpfs,target=/dev/shm -e "IN_KAFKA_TOPIC=${TRAINER_CPU_JOB}" --mount type=bind,source=/opt/fungi,destination=/app/credentials,readonly -e "OUT_KAFKA_TOPIC=${TRAINER_CPU_OUT}" -e "KAFKA_BROKERS=${KAFKA_BROKERS}" registry.hpc.ekik.uni-obuda.hu:5000/kafkarunners:${CI_COMMIT_BRANCH}  
