@@ -1,10 +1,10 @@
 FROM python:3.10-slim as staging
 RUN apt-get update && apt-get install -y git
 WORKDIR /app/
-RUN git clone https://github.com/karolyartur/json_schemas && git clone https://github.com/pytorch/vision
+RUN git clone https://github.com/karolyartur/json_schemas && git clone https://github.com/karolyartur/vision
 COPY . /app/kafka_runners
 
-FROM pytorch/pytorch:latest as runner
+FROM pytorch/pytorch:2.0.0-cuda11.7-cudnn8-runtime as runner
 WORKDIR /app/kafka_runners
 COPY --from=staging /app /app
 
