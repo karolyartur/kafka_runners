@@ -75,6 +75,8 @@ class KafkaTrainer(KafkaRunner):
             self.logger.warning('JSON schema for Kafka message at path: "{}" could not be decoded (invalid JSON)\nOutgoing messages will NOT be validated!'.format(schema_path))
             self.training_output_schema = {}
 
+        self.service_info = self.construct_and_validate_service_info(self.schema_path, 'Mask-RCNN Trainer', 'Trains Mask-RCNN models using CPU', self.training_job_schema, self.training_output_schema)
+
     def msg_to_command(self, msg):
         '''Convert incoming Kafka messages to a command for the training
         '''
