@@ -13,7 +13,7 @@ build-job:       # This job runs in the build stage, which runs first.
   stage: build
   script:
     - echo "Compiling the code..."
-    - docker build -t blender_mushroom ./ --no-cache
+    - docker build -t $TAG_COMMIT -t $TAG_LATEST ./ --no-cache
 
 publish:
   image: docker:latest
@@ -21,7 +21,6 @@ publish:
   services:
     - docker:dind
   script:
-    - docker build -t $TAG_COMMIT -t $TAG_LATEST .
     - docker login -u gitlab-ci-token -p $CI_BUILD_TOKEN $CI_REGISTRY
     - docker push $TAG_COMMIT
     - docker push $TAG_LATEST
