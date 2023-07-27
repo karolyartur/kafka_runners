@@ -48,8 +48,8 @@ class MRCNNTrainer():
 
         try:
             # Prepare datasets
-            self.train_dataset = self._prepare_dataset(self.train_path, self.config.BATCH_SIZE, shuffle=True)
-            self.valid_dataset = self._prepare_dataset(self.valid_path, self.config.BATCH_SIZE)
+            self.train_dataset = self._prepare_dataset(self.train_path, self.config.BATCH_SIZE, shuffle=True, num_workers=self.config.NUM_WORKERS)
+            self.valid_dataset = self._prepare_dataset(self.valid_path, self.config.BATCH_SIZE, num_workers=self.config.NUM_WORKERS)
         except FileNotFoundError as e:
             raise RuntimeError('Could not prepare dataset!') from e
 
@@ -72,6 +72,9 @@ class MRCNNTrainer():
             BATCH_SIZE = 1
             NUM_EPOCHS = 1
             MAX_DETS = 100
+
+            # Data loader params
+            NUM_WORKERS = 0
 
             # SGD Optimizer params
             LEARNING_RATE = 0.005
@@ -141,7 +144,7 @@ class MRCNNTrainer():
         '''Train the Mask-RCNN model
         '''
         params = [p for p in self.model.parameters() if p.requires_grad]
-        optimizer = torch.optim.SGD(params, lr=self.config.WEIGHT_DECAY, momentum=self.config.MOMENTUM, weight_decay=self.config.WEIGHT_DECAY)
+        optimizer = torch.optim.SGD(params, lr=self.config.LEARNING_RATE, momentum=self.config.MOMENTUM, weight_decay=self.config.WEIGHT_DECAY)
         lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=self.config.LR_STEP_SIZE, gamma=self.config.LR_GAMMA)
 
         for epoch in range(self.config.NUM_EPOCHS):
@@ -153,7 +156,7 @@ class MRCNNTrainer():
             # evaluate on the test dataset
             evaluate(self.model, self.valid_dataset, device=self.device)
             if epoch % self.config.SAVE_FREQ == 0:
-                with self.s3.open(os.path.join(self.output_path, f"maskrcnn_weights{str(datetime.datetime.now()).split('.')[0].replace(' ','_')}.pth"), 'wb') as f:
+                with self.s3.open(os.path.join(self.output_path, '{}_maskrcnn_weights{}.pth'.format(self.model_name,str(datetime.datetime.now()).split('.')[0].replace(' ','_'))), 'wb') as f:
                     torch.save(self.model.state_dict(), f)
 
 
