@@ -23,7 +23,7 @@ class MRCNNTrainer():
      - output_path (str): Path to the folder where the output of the training will be saved, default is "training_output"
      - logger (logging.logger object): A logger can be passed, if the MRCNNTrainer is used inside a class that has its own logger already (default is None which means a new logger will be created)
     '''
-    def __init__(self, s3, config_file_path, train_path, valid_path, model_name='model', output_path='training_output', logger=None):
+    def __init__(self, s3, config_file_path, train_path, valid_path, model_name='model', output_path='training_output', logger=None, preprocess=True):
         '''Constructor for MRCNNTrainer
         '''
         self.s3 = s3
@@ -48,8 +48,8 @@ class MRCNNTrainer():
 
         try:
             # Prepare datasets
-            self.train_dataset = self._prepare_dataset(self.train_path, self.config.BATCH_SIZE, shuffle=True, num_workers=self.config.NUM_WORKERS)
-            self.valid_dataset = self._prepare_dataset(self.valid_path, self.config.BATCH_SIZE, num_workers=self.config.NUM_WORKERS)
+            self.train_dataset = self._prepare_dataset(self.train_path, self.config.BATCH_SIZE, shuffle=True, num_workers=self.config.NUM_WORKERS, preprocess=preprocess)
+            self.valid_dataset = self._prepare_dataset(self.valid_path, self.config.BATCH_SIZE, num_workers=self.config.NUM_WORKERS, preprocess=preprocess)
         except FileNotFoundError as e:
             raise RuntimeError('Could not prepare dataset!') from e
 
@@ -126,7 +126,7 @@ class MRCNNTrainer():
         self.config = Configs(config_file_path)
         self.logger.info('Loaded configs from "{}"'.format(config_file_path))
 
-    def _prepare_dataset(self, path, batch_size, shuffle=False, num_workers=0):
+    def _prepare_dataset(self, path, batch_size, shuffle=False, num_workers=0, preprocess=True):
         '''Create, prepare and return dataset
 
         Args:
@@ -136,7 +136,7 @@ class MRCNNTrainer():
          - num_workers (int): Number of parallel workers for data loading, (default is 0, meaning no parallel workers)
         '''
         self.logger.info('Preparing dataset: "{}"'.format(path))
-        dataset = InstanceSegmentationDataset(path, self.s3, logger=self.logger)
+        dataset = InstanceSegmentationDataset(path, self.s3, logger=self.logger, preprocess=preprocess)
         data_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers, collate_fn=collate_fn)
         return data_loader
     

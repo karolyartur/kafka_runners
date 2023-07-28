@@ -98,6 +98,7 @@ class KafkaTrainer(KafkaRunner):
 
             #Set defaults of message
             model_name = 'model'
+            preprocess = True
 
             # Get data from Minio storage
             # Download training data
@@ -182,6 +183,8 @@ class KafkaTrainer(KafkaRunner):
             # Construct and return command if data is ready
             if 'modelName' in msg_json:
                 model_name = msg_json['modelName']
+            if 'preprocessDataset' in msg_json:
+                preprocess = msg_json['preprocessDataset']
 
             # output_path = os.path.split(self.temp_training_output)[-1]
             output_path = os.path.normpath(msg_json['outputLocation'])
@@ -189,7 +192,7 @@ class KafkaTrainer(KafkaRunner):
             #     os.mkdir(output_path)
 
             start_time = time.time()
-            trainer = MRCNNTrainer(self.client._s3, config, train, valid, model_name=model_name, output_path=output_path,logger=self.logger)
+            trainer = MRCNNTrainer(self.client._s3, config, train, valid, model_name=model_name, output_path=output_path,logger=self.logger, preprocess=preprocess)
             trainer.train()
             end_time = time.time()
             self.elapsed_time = end_time-start_time
