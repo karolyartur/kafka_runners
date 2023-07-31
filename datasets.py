@@ -39,7 +39,8 @@ class InstanceSegmentationDataset(torch.utils.data.Dataset):
             self.preprocess_dataset(annots)
         else:
             self.logger.info('Using preprocessed annotations')
-        self.imgs_path_list = [fpath for fpath in imgs if fpath.replace(os.path.splitext(fpath)[-1], '.npz') in self.s3.ls(self.imgs_path)]
+        data_path_ls = self.s3.ls(self.imgs_path)
+        self.imgs_path_list = [fpath for fpath in imgs if fpath.replace(os.path.splitext(fpath)[-1], '.npz') in data_path_ls]
         self.transforms = transforms
 
     def __getitem__(self, idx):
