@@ -20,7 +20,7 @@ publish-job:
   only:
     - mrcnn-inference-gpu
   script:
-    - docker login -p "$REGISTRY_PASSWORD" -u runner1 https://registry.hpc.ekik.uni-obuda.hu:5000
+    - docker login -p "${REGISTRY_PASSWORD}" -u runner1 https://registry.hpc.ekik.uni-obuda.hu:5000
     - echo "login to registry OK kafkarunners branch-> ${CI_COMMIT_BRANCH}"
     #nincs meglevo cntainer, csak ekkor kell ez, ha futik.
     #    - docker container commit $COMMIT_HASH kafkarunners:latest
