@@ -1,0 +1,49 @@
+# For more information, see: https://docs.gitlab.com/ee/ci/yaml/index.html#stages
+# To contribute improvements to CI/CD templates, please follow the Development guide at:
+# https://docs.gitlab.com/ee/development/cicd/templates.html
+
+stages:          # List of stages for jobs, and their order of execution
+  - build
+  - publish
+  - init
+  - deploy
+
+#shell executor van beállítva!
+build.job:
+  stage: build
+  only:
+    - mrcnn-inference
+  script:
+    - docker build -t kafkarunners:${CI_COMMIT_BRANCH} .
+publish-job:
+  stage: publish
+  only:
+    - mrcnn-inference
+  script:
+    - docker login -p "$REGISTRY_PASSWORD" -u runner1 https://registry.hpc.ekik.uni-obuda.hu:5000
+    - echo "login to registry OK kafkarunners branch-> ${CI_COMMIT_BRANCH}"
+    #nincs meglevo cntainer, csak ekkor kell ez, ha futik.
+    #    - docker container commit $COMMIT_HASH kafkarunners:latest
+    #    - echo "commit done"
+    - docker image tag kafkarunners:${CI_COMMIT_BRANCH} registry.hpc.ekik.uni-obuda.hu:5000/kafkarunners:${CI_COMMIT_BRANCH}
+    - echo "tagging OK"
+    - docker image push registry.hpc.ekik.uni-obuda.hu:5000/kafkarunners:${CI_COMMIT_BRANCH}
+    - echo "push was successfull"
+#ez leskálázza szépen a service-t majd kinyiffantja, hogy ne akadjon össze semmi lehetőleg.
+init-job:
+  stage: init
+  only:
+    - mrcnn-inference
+  script:
+    - whoami
+    - docker service update --force --update-parallelism 1 --update-delay 30s --replicas 0 ${CI_COMMIT_BRANCH}  || echo "there is no service like this"
+    - docker service rm ${CI_COMMIT_BRANCH}  || echo "there is no service like this"
+#telepítjük a szolgáltatást a megfelelő beállításokkal és indítjuk. A worktereknek hozzá kell tudniuk férni a registry-hez, ami be van állítva.
+deploy-job:
+  stage: deploy
+  only:
+    - mrcnn-inference
+  script:
+    - echo "-e IN_KAFKA_TOPIC=${INFERENCE_CPU_JOB} -e OUT_KAFKA_TOPIC=${INFERENCE_CPU_OUT} -e KAFKA_BROKERS=${KAFKA_BROKERS}"
+    - docker service create --with-registry-auth --replicas 1 --name ${CI_COMMIT_BRANCH} --generic-resource "NVIDIA-GPU=1" --mount type=bind,source=/tmp/.X11-unix,destination=/tmp/.X11-unix -e "XAUTHORITY=/tmp/.docker.xauth" --mount type=bind,source=/tmp/.docker.xauth,destination=/tmp/.docker.xauth -e DISPLAY=:0 -e "NVIDIA_DRIVER_CAPABILITIES=compute,utility,display,video" --mount type=tmpfs,target=/dev/shm -e "IN_KAFKA_TOPIC=${INFERENCE_CPU_JOB}" --mount type=bind,source=/opt/fungi,destination=/app/credentials,readonly -e "OUT_KAFKA_TOPIC=${INFERENCE_CPU_OUT}" -e "KAFKA_BROKERS=${KAFKA_BROKERS}" registry.hpc.ekik.uni-obuda.hu:5000/kafkarunners:${CI_COMMIT_BRANCH}  
+    #- docker service create --with-registry-auth --replicas 1 --name ${CI_COMMIT_BRANCH}  -e "IN_KAFKA_TOPIC=${INFERENCE_CPU_JOB}" --mount type=bind,source=/opt/fungi,destination=/app/credentials,readonly -e "OUT_KAFKA_TOPIC=${INFERENCE_CPU_OUT}" -e "KAFKA_BROKERS=${KAFKA_BROKERS}" registry.hpc.ekik.uni-obuda.hu:5000/kafkarunners:${CI_COMMIT_BRANCH}    
