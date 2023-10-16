@@ -47,7 +47,7 @@ class KafkaInfer(KafkaRunner):
             db_user = 'user',
             db_pass = '',
             db_ip = 'mongodb:27017',
-            db_name = ''
+            db_name = '',
             schema_path='../json_schemas',
             consumer_group_id = None,
             error_topic_name='error.log',
