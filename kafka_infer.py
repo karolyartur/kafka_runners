@@ -3,6 +3,7 @@ import argparse
 import json
 import logging
 import time
+import pymongo
 import numpy as np
 from kafka_runner import KafkaRunner
 from minio_client import MinioClient
@@ -15,6 +16,10 @@ parser = argparse.ArgumentParser(description="Kafka Infer")
 parser.add_argument("in_topic_name", type=str,help="in_topic name")
 parser.add_argument("out_topic_name", type=str,help="out_topic name")
 parser.add_argument("bootstrap_servers", type=str, nargs='+', help="list of bootstrap servers")
+parser.add_argument("-dbu", "--db_user", dest='db_user', type=str, help="User for DB", default=None)
+parser.add_argument("-dbp", "--db_pass", dest='db_pass', type=str, help="Pass for DB", default=None)
+parser.add_argument("-dbip", "--db_ip", dest='db_ip', type=str, help="IP of DB", default=None)
+parser.add_argument("-dbn", "--db_name", dest='db_name', type=str, help="Name of DB", default=None)
 parser.add_argument("-g", "--group_id", dest='consumer_group_id', type=str, help="consumer group id", default=None)
 parser.add_argument("-e","--error_topic_name",dest='error_topic_name', type=str, help="name of the Kafka topic to log errors to", default='error.log')
 parser.add_argument("-d","--debug",dest='debug', action='store_true', help="run the script in debug mode", default=False)
@@ -35,7 +40,18 @@ class KafkaInfer(KafkaRunner):
      - error_topic_name (str): Name of the Kafka topic to send error logs to (default is 'error.log')
      - loglevel (logging.DEBUG/WARN/...): Logging level (default is logging.WARN meaning warnings and higher level logs will be reported)
     '''
-    def __init__(self, in_topic_name, out_topic_name, bootstrap_servers, schema_path='../json_schemas', consumer_group_id = None, error_topic_name='error.log', loglevel = logging.WARN):
+    def __init__(self, 
+            in_topic_name,
+            out_topic_name,
+            bootstrap_servers,
+            db_user = 'user',
+            db_pass = '',
+            db_ip = 'mongodb:27017',
+            db_name = ''
+            schema_path='../json_schemas',
+            consumer_group_id = None,
+            error_topic_name='error.log',
+            loglevel = logging.WARN):
         # Init base-class
         try:
             super().__init__(in_topic_name, out_topic_name, bootstrap_servers, consumer_group_id=consumer_group_id, error_topic_name=error_topic_name, loglevel=loglevel)
@@ -72,6 +88,19 @@ class KafkaInfer(KafkaRunner):
             self.logger.warning('JSON schema for Kafka message at path: "{}" could not be decoded (invalid JSON)\nOutgoing messages will NOT be validated!'.format(schema_path))
             self.inference_output_schema = {}
 
+        self.mongo_client = pymongo.MongoClient("mongodb://{}:{}@{}/?authMechanism=DEFAULT&authSource={}".format(db_user,db_pass,db_ip,db_name))
+        self.db = self.mongo_client[db_name]
+        try:
+            # Test DB connection
+            self.db.list_collection_names()
+        except pymongo.errors.ServerSelectionTimeoutError:
+            self.logger.error('Timout while trying to list available DB collections. Connection to DB might be lost. Results will not be stored in DB!')
+            self.db = None
+        except pymongo.errors.OperationFailure as e:
+            self.logger.error(e)
+            self.db = None
+
+
         self.service_info = self.construct_and_validate_service_info(self.schema_path, 'Mask-RCNN Inference', 'Makes predictions with Mask-RCNN models using CPU', self.inference_job_schema, self.inference_output_schema)
 
     def msg_to_command(self, msg):
@@ -95,6 +124,7 @@ class KafkaInfer(KafkaRunner):
 
             #Set defaults of message
             max_dets = 100
+            put_to_db = False
 
             # Get data from Minio storage
             # Download model weights
@@ -116,6 +146,8 @@ class KafkaInfer(KafkaRunner):
             # Construct and return command if data is ready
             if 'maxDets' in msg_json:
                 max_dets = msg_json['maxDets']
+            if 'puttoDB' in msg_json:
+                put_to_db = msg_json['puttoDB']
 
             # Get img path and name
             img_path = os.path.normpath(msg_json['imagePath'])
@@ -129,11 +161,22 @@ class KafkaInfer(KafkaRunner):
             mrcnn = MRCNNInference(self.client._s3, model_local_path, max_dets=max_dets)
             boxes, masks = mrcnn.predict(img_path)
 
+            boxes_path = os.path.join(output_path,'{}_boxes.json'.format(img_name))
+            masks_path = os.path.join(output_path,'{}_masks.npz'.format(img_name))
+
             # Save results
-            with self.client._s3.open(os.path.join(output_path,'{}_boxes.json'.format(img_name)), 'w') as f:
+            with self.client._s3.open(boxes_path, 'w') as f:
                 f.write(json.dumps(boxes))
-            with self.client._s3.open(os.path.join(output_path,'{}_masks.npz'.format(img_name)), 'wb') as f:
+            with self.client._s3.open(masks_path, 'wb') as f:
                 np.savez_compressed(f, masks=masks)
+
+            if put_to_db and self.db is not None:
+                collection = self.db[os.path.splitext(weights_file_name)[0]]
+                try:
+                    collection.insert_one({'_id':img_name, 'boxes_path':boxes_path, 'masks_path':masks_path, 'predictions':boxes})
+                except pymongo.errors.DuplicateKeyError:
+                    pass
+                
             end_time = time.time()
 
             self.elapsed_time = end_time-start_time
@@ -175,7 +218,17 @@ class KafkaInfer(KafkaRunner):
 def main():
     logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     args = parser.parse_args()
-    mrcnn_trainer = KafkaInfer(args.in_topic_name, args.out_topic_name, args.bootstrap_servers, consumer_group_id=args.consumer_group_id, error_topic_name=args.error_topic_name, loglevel=logging.DEBUG if args.debug else logging.WARN)
+    mrcnn_trainer = KafkaInfer(
+        args.in_topic_name,
+        args.out_topic_name,
+        args.bootstrap_servers,
+        db_user = args.db_user,
+        db_pass = args.db_pass,
+        db_ip = args.db_ip,
+        db_name = args.db_name,
+        consumer_group_id = args.consumer_group_id,
+        error_topic_name = args.error_topic_name,
+        loglevel = logging.DEBUG if args.debug else logging.WARN)
     mrcnn_trainer.start_listening()
 
 if __name__=='__main__':

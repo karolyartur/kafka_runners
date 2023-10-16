@@ -4,3 +4,4 @@ kafka-python
 jsonschema
 pycocotools
 s3fs
+pymongo

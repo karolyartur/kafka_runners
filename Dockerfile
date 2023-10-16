@@ -15,5 +15,9 @@ ENV PYTHONPATH="$PYTHONPATH:/app/vision/references/detection"
 ENV IN_KAFKA_TOPIC=""
 ENV OUT_KAFKA_TOPIC=""
 ENV KAFKA_BROKERS=""
+ENV DB_USER=""
+ENV DB_PASS = ""
+ENV DB_IP = ""
+ENV DB_NAME = ""
 
-ENTRYPOINT python3 kafka_infer.py $IN_KAFKA_TOPIC $OUT_KAFKA_TOPIC $KAFKA_BROKERS
+ENTRYPOINT python3 kafka_infer.py $IN_KAFKA_TOPIC $OUT_KAFKA_TOPIC $KAFKA_BROKERS --db_user $DB_USER --db_pass $DB_PASS --db_ip $DB_IP --db_name $DB_NAME
