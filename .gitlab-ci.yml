@@ -12,13 +12,13 @@ stages:          # List of stages for jobs, and their order of execution
 build.job:
   stage: build
   only:
-    - annotator
+    - annotator-gpu
   script:
     - docker build -t kafkarunners:${CI_COMMIT_BRANCH} .
 publish-job:
   stage: publish
   only:
-    - annotator
+    - annotator-gpu
   script:
     - docker login -p "$REGISTRY_PASSWORD" -u runner1 https://registry.hpc.ekik.uni-obuda.hu:5000
     - echo "login to registry OK kafkarunners branch-> ${CI_COMMIT_BRANCH}"
@@ -33,16 +33,16 @@ publish-job:
 init-job:
   stage: init
   only:
-    - annotator
+    - annotator-gpu
   script:
     - whoami
-    - docker service update --force --update-parallelism 1 --update-delay 30s --replicas 0 annotator || echo "there is no service like this"
-    - docker service rm annotator || echo "there is no service like this"
+    - docker service update --force --update-parallelism 1 --update-delay 30s --replicas 0 annotatorgpu || echo "there is no service like this"
+    - docker service rm annotatorgpu || echo "there is no service like this"
 #telepítjük a szolgáltatást a megfelelő beállításokkal és indítjuk. A worktereknek hozzá kell tudniuk férni a registry-hez, ami be van állítva.
 deploy-job:
   stage: deploy
   only:
-    - annotator
+    - annotator-gpu
   script:
     - echo "-e IN_KAFKA_TOPIC=${IN_KAFKA_TOPIC} -e OUT_KAFKA_TOPIC=${OUT_KAFKA_TOPIC} -e KAFKA_BROKERS=${KAFKA_BROKERS}"
-    - docker service create --with-registry-auth --replicas 1 --name annotator -e "IN_KAFKA_TOPIC=${IN_KAFKA_TOPIC}" --mount type=bind,source=/opt/fungi,destination=/app/credentials,readonly -e "OUT_KAFKA_TOPIC=${OUT_KAFKA_TOPIC}" -e "KAFKA_BROKERS=${KAFKA_BROKERS}" registry.hpc.ekik.uni-obuda.hu:5000/kafkarunners:${CI_COMMIT_BRANCH} 
+    - docker service create --with-registry-auth --replicas 1 --name annotatorgpu -e "IN_KAFKA_TOPIC=${IN_KAFKA_TOPIC}" --mount type=bind,source=/opt/fungi,destination=/app/credentials,readonly -e "OUT_KAFKA_TOPIC=${OUT_KAFKA_TOPIC}" -e "KAFKA_BROKERS=${KAFKA_BROKERS}" registry.hpc.ekik.uni-obuda.hu:5000/kafkarunners:${CI_COMMIT_BRANCH} 
