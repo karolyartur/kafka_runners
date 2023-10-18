@@ -14,7 +14,7 @@ NAME="xvfb"
 PATH="/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin"
 APPDIR="/"
 APPBIN="/usr/bin/Xvfb"
-APPARGS=":0 -screen 0 1920x1080x24"
+APPARGS=":0 -screen 0 1920x1080x24+32"
 USER="root"
 GROUP="root"
 
