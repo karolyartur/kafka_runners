@@ -34,8 +34,9 @@ RUN apt-get update && apt-get install -y  \
 #    update-rc.d xvfb defaults && \
 #    echo "export DISPLAY=:0" >> ~/.bashrc
 #CMD cd kafka_runners && python3 kafka_render.py $IN_KAFKA_TOPIC $OUT_KAFKA_TOPIC $KAFKA_BROKERS
-RUN Xvfb :2 -screen 0 1920x1080x24+32 &
-RUN DISPLAY=:2.0 
-RUN export DISPLAY
+# RUN Xvfb :2 -screen 0 1920x1080x24+32 &
+# RUN DISPLAY=:2.0 
+# RUN export DISPLAY
 
-ENTRYPOINT python3 kafka_annotate.py $IN_KAFKA_TOPIC $OUT_KAFKA_TOPIC $KAFKA_BROKERS
+#ENTRYPOINT python3 kafka_annotate.py $IN_KAFKA_TOPIC $OUT_KAFKA_TOPIC $KAFKA_BROKERS
+ENTRYPOINT [ "/bin/sh" ,"kafka-kafka_annotate.sh" ]
