@@ -12,13 +12,13 @@ stages:          # List of stages for jobs, and their order of execution
 build.job:
   stage: build
   only:
-    - mrcnn-inference-gpu
+    - mrcnn-inference
   script:
     - docker build -t kafkarunners:${CI_COMMIT_BRANCH} .
 publish-job:
   stage: publish
   only:
-    - mrcnn-inference-gpu
+    - mrcnn-inference
   script:
     - docker login -p "${REGISTRY_PASSWORD}" -u runner1 https://registry.hpc.ekik.uni-obuda.hu:5000
     - echo "login to registry OK kafkarunners branch-> ${CI_COMMIT_BRANCH}"
@@ -33,7 +33,7 @@ publish-job:
 init-job:
   stage: init
   only:
-    - mrcnn-inference-gpu
+    - mrcnn-inference
   script:
     - whoami
     - docker service update --force --update-parallelism 1 --update-delay 30s --replicas 0 ${CI_COMMIT_BRANCH}  || echo "there is no service like this"
@@ -42,8 +42,8 @@ init-job:
 deploy-job:
   stage: deploy
   only:
-    - mrcnn-inference-gpu
+    - mrcnn-inference
   script:
-    - echo "-e IN_KAFKA_TOPIC=${INFERENCE_GPU_JOB} -e OUT_KAFKA_TOPIC=${INFERENCE_GPU_OUT} -e KAFKA_BROKERS=${KAFKA_BROKERS}"
-    - docker service create --with-registry-auth --replicas 1 --name ${CI_COMMIT_BRANCH} --generic-resource "NVIDIA-GPU=1" -e "NVIDIA_DRIVER_CAPABILITIES=compute,utility" --mount type=tmpfs,target=/dev/shm -e "IN_KAFKA_TOPIC=${INFERENCE_GPU_JOB}" --mount type=bind,source=/opt/fungi,destination=/app/credentials,readonly -e "OUT_KAFKA_TOPIC=${INFERENCE_GPU_OUT}" -e "KAFKA_BROKERS=${KAFKA_BROKERS}" -e "DB_USER=${MONGODB_USER}" -e "DB_PASS=${MONGODB_PASS}" -e "DB_IP=${MONGODB_IP}" -e "DB_NAME=${MONGODB_DB_NAME}" registry.hpc.ekik.uni-obuda.hu:5000/kafkarunners:${CI_COMMIT_BRANCH}  
-    #- docker service create --with-registry-auth --replicas 1 --name ${CI_COMMIT_BRANCH}  -e "IN_KAFKA_TOPIC=${INFERENCE_GPU_JOB}" --mount type=bind,source=/opt/fungi,destination=/app/credentials,readonly -e "OUT_KAFKA_TOPIC=${INFERENCE_GPU_OUT}" -e "KAFKA_BROKERS=${KAFKA_BROKERS}" registry.hpc.ekik.uni-obuda.hu:5000/kafkarunners:${CI_COMMIT_BRANCH}    
+    - echo "-e IN_KAFKA_TOPIC=${INFERENCE_CPU_JOB} -e OUT_KAFKA_TOPIC=${INFERENCE_CPU_OUT} -e KAFKA_BROKERS=${KAFKA_BROKERS}"
+    - docker service create --with-registry-auth --replicas 1 --name ${CI_COMMIT_BRANCH} --generic-resource "NVIDIA-GPU=1" -e "NVIDIA_DRIVER_CAPABILITIES=compute,utility" --mount type=tmpfs,target=/dev/shm -e "IN_KAFKA_TOPIC=${INFERENCE_CPU_JOB}" --mount type=bind,source=/opt/fungi,destination=/app/credentials,readonly -e "OUT_KAFKA_TOPIC=${INFERENCE_CPU_OUT}" -e "KAFKA_BROKERS=${KAFKA_BROKERS}" -e "DB_USER=${MONGODB_USER}" -e "DB_PASS=${MONGODB_PASS}" -e "DB_IP=${MONGODB_IP}" -e "DB_NAME=${MONGODB_DB_NAME}" registry.hpc.ekik.uni-obuda.hu:5000/kafkarunners:${CI_COMMIT_BRANCH}  
+    #- docker service create --with-registry-auth --replicas 1 --name ${CI_COMMIT_BRANCH}  -e "IN_KAFKA_TOPIC=${INFERENCE_CPU_JOB}" --mount type=bind,source=/opt/fungi,destination=/app/credentials,readonly -e "OUT_KAFKA_TOPIC=${INFERENCE_CPU_OUT}" -e "KAFKA_BROKERS=${KAFKA_BROKERS}" registry.hpc.ekik.uni-obuda.hu:5000/kafkarunners:${CI_COMMIT_BRANCH}    
