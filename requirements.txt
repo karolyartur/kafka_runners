@@ -1,4 +1,4 @@
 urllib3
-minio
+minio==7.1.12
 kafka-python
 jsonschema
