@@ -8,7 +8,7 @@ RUN git clone https://github.com/karolyartur/json_schemas && git clone https://g
 COPY . /app/kafka_runners
 RUN pip install -Ur kafka_runners/requirements.txt
 
-FROM nytimes/blender:3.1-cpu-ubuntu18.04 as runner
+FROM nytimes/blender:3.1-gpu-ubuntu18.04 as runner
 WORKDIR /app/kafka_runners
 COPY --from=staging /app /app
 # Enable venv

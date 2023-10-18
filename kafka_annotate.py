@@ -134,7 +134,7 @@ class KafkaAnnotate(KafkaRunner):
             if 'useGPU' in msg_json:
                 use_gpu = msg_json['useGPU']
             if use_gpu:
-                cmd = [self.blender, scene, '-y', '--python', 'render_annotations.py', '--', '-fs', '{}'.format(frame_start), '-fn', '{}'.format(frame_num), '-o', '{}'.format(self.temp_render_output), '--gpu']
+                cmd = [self.blender, scene, '-y', '--python', 'render_annotations.py', '--', '-fs', '{}'.format(frame_start), '-fn', '{}'.format(frame_num), '-o', '{}'.format(self.temp_render_output), '--gpu', '--cycles-device', 'CUDA']
             else:
                 cmd = [self.blender, scene, '-y', '--python', 'render_annotations.py', '--', '-fs', '{}'.format(frame_start), '-fn', '{}'.format(frame_num), '-o', '{}'.format(self.temp_render_output)]
             self.logger.info('Command to be executed: {}'.format(cmd))
