@@ -1,5 +1,5 @@
 FROM python:3.6-slim as staging
-RUN apt update && apt install -y git
+RUN apt-get update && apt-get install -y git
 WORKDIR /app/
 RUN python -m venv /app/venv
 # Enable venv
