@@ -39,4 +39,4 @@ RUN apt-get update && apt-get install -y  \
 # RUN export DISPLAY
 
 #ENTRYPOINT python3 kafka_annotate.py $IN_KAFKA_TOPIC $OUT_KAFKA_TOPIC $KAFKA_BROKERS
-ENTRYPOINT [ "/bin/sh" ,"kafka-kafka_annotate.sh" ]
+ENTRYPOINT [ "/bin/sh" ,"kafka-annotate.sh" ]
