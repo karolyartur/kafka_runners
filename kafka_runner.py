@@ -108,6 +108,7 @@ class KafkaRunner():
             try:
                 for msg in self.consumer:
                     self.logger.info('Got a new message: {}'.format(msg.value))
+                    self.consumer.commit()
                     cmd = self.msg_to_command(msg)
                     if cmd:
                         self.logger.info('Executing command')
