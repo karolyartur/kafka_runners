@@ -3,7 +3,6 @@ import argparse
 import json
 import logging
 import time
-import numpy as np
 from kafka_runner import KafkaRunner
 from minio_client import MinioClient
 from jsonschema import validate, RefResolver
