@@ -46,24 +46,29 @@ class MRCNNInference():
         self.model.eval()
 
 
-    def predict(self, img_path):
+    def predict(self, img_paths):
         '''Make predictions with the Mask-RCNN model
 
         Args:
-         - img_path (str): A string describing the location of the image in the MinIO storage. Format: BUCKET_NAME/PATH/TO/IMAGE
+         - img_paths (list[str]): Strings describing the location of the image in the MinIO storage. Format: BUCKET_NAME/PATH/TO/IMAGE
 
         Returns:
-         - preds tuple[p, masks]: The predictions of the model for the given image, where "boxes" is a dictionary containing predicted boxes, labels and scores and "masks" is a numpy array of segmentation masks
-        '''    
-        with self.s3.open(img_path, 'rb') as f:
-            img = np.array(Image.open(f))
-            img = np.moveaxis(img, (2), (0))[:3]/255
-        img = torch.as_tensor(np.expand_dims(img,axis=0), dtype=torch.float32).to(self.device)
-        preds = self.model(img)
-        boxes = {k:v.tolist() for k,v in preds[0].items() if k !='masks'}
-        masks = preds[0]['masks'].cpu().detach().numpy()
-        s = masks.shape
-        masks = np.reshape(masks, (s[0],s[2],s[3]))
+         - preds tuple[p, masks]: The predictions of the model for the given image, where "p" is a dictionary containing predicted boxes, labels and scores and "masks" is a numpy array of segmentation masks
+        '''
+        for i, img_path in enumerate(img_paths):
+            with self.s3.open(img_path, 'rb') as f:
+                img = np.array(Image.open(f))
+                img = np.moveaxis(img, (2), (0))[:3]/255
+            if i == 0:
+                imgs = torch.as_tensor(np.expand_dims(img,axis=0), dtype=torch.float32).to(self.device)
+            else:
+                img = torch.as_tensor(np.expand_dims(img,axis=0), dtype=torch.float32).to(self.device)
+                imgs = torch.cat(imgs, img, 0)
+        preds = self.model(imgs)
+        boxes = [{k:v.tolist() for k,v in pred.items() if k !='masks'} for pred in preds]
+        masks = [pred['masks'].cpu().detach().numpy() for pred in preds]
+        shapes = [m.shape for m in masks]
+        masks = [np.reshape(m, (s[0],s[2],s[3])) for m,s in zip(masks,shapes)]
         return boxes, masks
 
 

@@ -106,81 +106,98 @@ class KafkaInfer(KafkaRunner):
     def msg_to_command(self, msg):
         '''Convert incoming Kafka messages to a command for the inference
         '''
-        # Validate incoming message (is it valid JSON? Is it valid, according to the schema?)
+        # Validate incoming messages (is it valid JSON? Is it valid, according to the schema?)
         try:
-            msg_json = msg.value
-            if isinstance(msg_json, str):
-                msg_json = json.loads(msg_json)
-            resolver = RefResolver(base_uri='file://'+os.path.abspath(self.schema_path)+'/'+'inference_job.schema.json', referrer=None)
-            validate(instance=msg_json, schema=self.inference_job_schema, resolver=resolver)
+            msgs_json = []
+            for m in msg:
+                msg_json = m
+                if isinstance(msg_json, str):
+                    msg_json = json.loads(msg_json)
+                resolver = RefResolver(base_uri='file://'+os.path.abspath(self.schema_path)+'/'+'inference_job.schema.json', referrer=None)
+                validate(instance=msg_json, schema=self.inference_job_schema, resolver=resolver)
+                msgs_json.append(msg_json)
         except JSONDecodeError:
-            self.logger.warning('Message "{}" could not be decoded (invalid JSON)\nIgnoring message'.format(msg.value))
+            self.logger.warning('Messages "{}" could not be decoded (invalid JSON)\nIgnoring messages'.format(msg))
         except TypeError as e:
-            self.logger.warning('Message "{}" could not be decoded (invalid input type for JSON decoding). {}\nIgnoring message'.format(msg.value, e))
+            self.logger.warning('Messages "{}" could not be decoded (invalid input type for JSON decoding). {}\nIgnoring messages'.format(msg, e))
         except ValidationError:
-            self.logger.warning('Message "{}" failed JSON schema validation (used schema: {})\nIgnoring message'.format(msg.value, os.path.join(self.schema_path,'inference_job.schema.json')))
+            self.logger.warning('Messages "{}" failed JSON schema validation (used schema: {})\nIgnoring messages'.format(msg, os.path.join(self.schema_path,'inference_job.schema.json')))
         else:
-            # If the message is valid:
+            # If the messages are valid:
 
             #Set defaults of message
             max_dets = 100
             put_to_db = False
+            model_local_path = ''
 
             # Get data from Minio storage
             # Download model weights
-            weights_file_path = os.path.normpath(msg_json['modelWeightsFilePath']).split(os.path.sep)
-            weights_file_bucket = weights_file_path[0]
-            weights_file_name = weights_file_path[-1]
-            weights_file_path = os.path.sep.join(weights_file_path[1:])
-            model_local_path = os.path.join('models',weights_file_name)
 
-            try:
-                if not os.path.exists('models'):
-                    os.mkdir('models')
-                if not weights_file_name in os.listdir('models'):
-                    self.client.download_file(weights_file_bucket, weights_file_path, os.path.join('models',weights_file_name))
-            except RuntimeError:
-                self.logger.warning('Could not locate and/or download model weights from "{}" bucket and location "{}". Inference will NOT start!'.format(weights_file_bucket,weights_file_path))
+            # Validate, that all messages use the same model
+
+            if len(set([m['modelWeightsFilePath'] for m in msgs_json])) == 1:
+                weights_file_path = os.path.normpath(msgs_json[0]['modelWeightsFilePath']).split(os.path.sep)
+                weights_file_bucket = weights_file_path[0]
+                weights_file_name = weights_file_path[-1]
+                weights_file_path = os.path.sep.join(weights_file_path[1:])
+                model_local_path = os.path.join('models',weights_file_name)
+
+                try:
+                    if not os.path.exists('models'):
+                        os.mkdir('models')
+                    if not weights_file_name in os.listdir('models'):
+                        self.client.download_file(weights_file_bucket, weights_file_path, os.path.join('models',weights_file_name))
+                except RuntimeError:
+                    self.logger.warning('Could not locate and/or download model weights from "{}" bucket and location "{}". Inference will NOT start!'.format(weights_file_bucket,weights_file_path))
+                    return None
+            else:
+                self.logger.warning('Messages in batch "{}" want to use different models! No predictions will be made.'.format(msgs_json))
                 return None
 
             # Construct and return command if data is ready
-            if 'maxDets' in msg_json:
-                max_dets = msg_json['maxDets']
-            if 'puttoDB' in msg_json:
-                put_to_db = msg_json['puttoDB']
 
-            # Get img path and name
-            img_path = os.path.normpath(msg_json['imagePath'])
-            output_path = os.path.normpath(msg_json['outputLocation'])
+            if len(set([m['maxDets'] for m in msgs_json])) == 1:
+                max_dets = msgs_json[0]['maxDets']
+            else:
+                self.logger.warning('Messages in batch "{}" want to use different maxDets! Default value will be used:{}'.format(msgs_json, max_dets))
+            if len(set([m['puttoDB'] for m in msgs_json])) == 1:
+                put_to_db = msgs_json[0]['puttoDB']
+            else:
+                self.logger.warning('Messages in batch "{}" want to use different puttoDB! Default value will be used:{}'.format(msgs_json, put_to_db))
+
+            # Get img paths and names
+            img_paths = [os.path.normpath(m['imagePath']) for m in msgs_json]
+            output_paths = [os.path.normpath(m['outputLocation']) for m in msgs_json]
 
 
-            img_name = os.path.splitext(img_path.split(os.path.sep)[-1])[0]
+            img_names = [os.path.splitext(img_path.split(os.path.sep)[-1])[0] for img_path in img_paths]
 
             # Do inference
             start_time = time.time()
             mrcnn = MRCNNInference(self.client._s3, model_local_path, max_dets=max_dets)
-            boxes, masks = mrcnn.predict(img_path)
+            boxes, masks = mrcnn.predict(img_paths)
 
-            boxes_path = os.path.join(output_path,'{}_boxes.json'.format(img_name))
-            masks_path = os.path.join(output_path,'{}_masks.npz'.format(img_name))
+            boxes_paths = [os.path.join(output_path,'{}_boxes.json'.format(img_name)) for output_path,img_name in zip(output_paths, img_names)]
+            masks_paths = [os.path.join(output_path,'{}_masks.npz'.format(img_name)) for output_path,img_name in zip(output_paths, img_names)]
 
             # Save results
-            with self.client._s3.open(boxes_path, 'w') as f:
-                f.write(json.dumps(boxes))
-            with self.client._s3.open(masks_path, 'wb') as f:
-                np.savez_compressed(f, masks=masks)
+            for i,(boxes_path, masks_path, img_name) in enumerate(zip(boxes_paths,masks_paths, img_names)):
+                with self.client._s3.open(boxes_path, 'w') as f:
+                    f.write(json.dumps(boxes[i]))
+                with self.client._s3.open(masks_path, 'wb') as f:
+                    np.savez_compressed(f, masks=masks[i])
 
-            if put_to_db and self.db is not None:
-                collection = self.db[os.path.splitext(weights_file_name)[0]]
-                try:
-                    collection.insert_one({'_id':img_name, 'boxes_path':boxes_path, 'masks_path':masks_path, 'predictions':boxes})
-                except pymongo.errors.DuplicateKeyError:
-                    pass
+                if put_to_db and self.db is not None:
+                    collection = self.db[os.path.splitext(weights_file_name)[0]]
+                    try:
+                        collection.insert_one({'_id':img_name, 'boxes_path':boxes_path, 'masks_path':masks_path, 'predictions':boxes[i]})
+                    except pymongo.errors.DuplicateKeyError:
+                        pass
                 
             end_time = time.time()
 
             self.elapsed_time = end_time-start_time
-            self.boxes = boxes
+            self.boxes = boxes[0]
             cmd = ['echo','']
             self.logger.info('Command to be executed: {}'.format(cmd))
             return cmd
@@ -189,20 +206,20 @@ class KafkaInfer(KafkaRunner):
         '''Construct a response after the inference is completed
         '''
         try:
-            msg_json = in_msg
-            if isinstance(msg_json, str):
-                msg_json = json.loads(msg_json)
-            resolver = RefResolver(base_uri='file://'+os.path.abspath(self.schema_path)+'/'+'inference_job.schema.json', referrer=None)
-            validate(instance=msg_json, schema=self.inference_job_schema, resolver=resolver)
+            for msg_json in in_msg:
+                if isinstance(msg_json, str):
+                    msg_json = json.loads(msg_json)
+                resolver = RefResolver(base_uri='file://'+os.path.abspath(self.schema_path)+'/'+'inference_job.schema.json', referrer=None)
+                validate(instance=msg_json, schema=self.inference_job_schema, resolver=resolver)
         except TypeError as e:
-            self.logger.warning('Message "{}" could not be decoded (invalid input type for JSON decoding). {}\nIgnoring message'.format(in_msg, e))
+            self.logger.warning('Messages "{}" could not be decoded (invalid input type for JSON decoding). {}\nIgnoring messages'.format(in_msg, e))
         except JSONDecodeError:
-            self.logger.warning('Message "{}" could not be decoded (invalid JSON)\nIgnoring message'.format(in_msg))
+            self.logger.warning('Messages "{}" could not be decoded (invalid JSON)\nIgnoring messages'.format(in_msg))
         except ValidationError:
-            self.logger.warning('Message "{}" failed JSON schema validation (used schema: {})\nIgnoring message'.format(in_msg, os.path.join(self.schema_path,'inference_job.schema.json')))
+            self.logger.warning('Messages "{}" failed JSON schema validation (used schema: {})\nIgnoring messages'.format(in_msg, os.path.join(self.schema_path,'inference_job.schema.json')))
         else:
             response = {}
-            response['inferenceJob'] = msg_json
+            response['inferenceJob'] = in_msg[0]
             response['timestamp'] = time.time()
             response['elapsedTime'] = self.elapsed_time
             response['predictions'] = self.boxes

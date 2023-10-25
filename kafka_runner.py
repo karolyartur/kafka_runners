@@ -75,6 +75,7 @@ class KafkaRunner():
                 group_id = consumer_group_id,
                 request_timeout_ms=50000,
                 reconnect_backoff_max_ms=50,
+                max_poll_records = 4,
                 session_timeout_ms=self.timeout*1000,
                 consumer_timeout_ms=self.timeout*1000,
                 value_deserializer=lambda x: json.loads(x.decode('utf-8'))
@@ -103,38 +104,41 @@ class KafkaRunner():
 
         This function should be called to use the Kafka Runner. It blocks until a KeyboardInterrupt is encountered
         '''
-        while True:
-            try:
-                for msg in self.consumer:
-                    self.logger.info('Got a new message: {}'.format(msg.value))
-                    cmd = self.msg_to_command(msg)
-                    if cmd:
-                        self.logger.info('Executing command')
-                        start_time = time.time()
-                        process = subprocess.Popen(cmd,
-                            stdout=subprocess.PIPE, 
-                            stderr=subprocess.PIPE,
-                            universal_newlines=True)
-                        stdout, stderr = process.communicate()
-                        end_time = time.time()
-                        self.logger.info('Finished executing command. Elapsed time: {}'.format(end_time-start_time))
-                        response = self.make_response(msg.value, end_time-start_time)
-                        if response:
-                            self.producer.send(self.out_topic_name, response)
-                            self.logger.info('Sending output: {}'.format(response))
-                        print(stdout.strip())
-                print('Idle ...')
-                if self.service_info:
-                    self.producer.send(self.service_info_topic_name, self.service_info)
-                time.sleep(self.timeout)
-            except FileNotFoundError as e:
-                self.logger.error('The construced command could not be executed!')
-                self.logger.error(e)
-            except KafkaTimeoutError as e:
-                self.logger.error('Timeout error during producer.send(), Potential causes: unable to fetch topic metadata, or unable to obtain memory buffer prior to configured max_block_ms')
-                self.logger.error(e)
-            except KeyboardInterrupt:
-                break
+        try:
+            while True:
+                try:
+                    msg = self.consumer.poll(0.1)
+                    if not msg:
+                        pass
+                    else:
+                        self.consumer.commit()
+                        msgs = list(msg.values())[0]
+                        msgs = [m.value for m in msgs]
+                        self.logger.info('Got {} new messages: {}'.format(len(msgs),msgs))
+                        cmd = self.msg_to_command(msgs)
+                        if cmd:
+                            self.logger.info('Executing command')
+                            start_time = time.time()
+                            process = subprocess.Popen(cmd,
+                                stdout=subprocess.PIPE, 
+                                stderr=subprocess.PIPE,
+                                universal_newlines=True)
+                            stdout, stderr = process.communicate()
+                            end_time = time.time()
+                            self.logger.info('Finished executing command. Elapsed time: {}'.format(end_time-start_time))
+                            response = self.make_response(msgs, end_time-start_time)
+                            if response:
+                                self.producer.send(self.out_topic_name, response)
+                                self.logger.info('Sending output: {}'.format(response))
+                            print(stdout.strip())
+                except FileNotFoundError as e:
+                    self.logger.error('The construced command could not be executed!')
+                    self.logger.error(e)
+                except KafkaTimeoutError as e:
+                    self.logger.error('Timeout error during producer.send(), Potential causes: unable to fetch topic metadata, or unable to obtain memory buffer prior to configured max_block_ms')
+                    self.logger.error(e)
+        except KeyboardInterrupt:
+            pass
 
     def msg_to_command(self, msg):
         '''Convert incoming message to a command
