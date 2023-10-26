@@ -100,6 +100,8 @@ class KafkaInfer(KafkaRunner):
             self.logger.error(e)
             self.db = None
 
+        self.mrcnn = None
+
 
         self.service_info = self.construct_and_validate_service_info(self.schema_path, 'Mask-RCNN Inference', 'Makes predictions with Mask-RCNN models using CPU', self.inference_job_schema, self.inference_output_schema)
 
@@ -174,8 +176,12 @@ class KafkaInfer(KafkaRunner):
 
             # Do inference
             start_time = time.time()
-            mrcnn = MRCNNInference(self.client._s3, model_local_path, max_dets=max_dets)
-            boxes, masks = mrcnn.predict(img_paths)
+            if self.mrcnn is None:
+                self.mrcnn = MRCNNInference(self.client._s3, model_local_path, max_dets=max_dets)
+            else:
+                self.mrcnn.load_model_weights(model_local_path,max_dets)
+            
+            boxes, masks = self.mrcnn.predict(img_paths)
 
             boxes_paths = [os.path.join(output_path,'{}_boxes.json'.format(img_name)) for output_path,img_name in zip(output_paths, img_names)]
             masks_paths = [os.path.join(output_path,'{}_masks.npz'.format(img_name)) for output_path,img_name in zip(output_paths, img_names)]

@@ -26,24 +26,9 @@ class MRCNNInference():
             self.logger.setLevel(logging.DEBUG)
         self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
-        try:
-            checkpoint = torch.load(model_weights_path, map_location=self.device)
-        except FileNotFoundError as e:
-            logger.error('Could not load model weights from path :"{}"'.format(model_weights_path))
-            raise RuntimeError('Could not load model weights from path :"{}"'.format(model_weights_path)) from e
-
-        last_key = list(checkpoint)[-1]
-        num_classes = list(checkpoint[last_key].size())[0]
-
-        try:
-            self.model = torchvision.models.detection.maskrcnn_resnet50_fpn_v2(num_classes=num_classes, box_detections_per_img=max_dets)
-        except RuntimeError as e:
-            self.logger.error('Could not create Mask-RCNN model.')
-            raise RuntimeError('Could not create Mask-RCNN model.') from e
-
-        self.model.to(self.device)
-        self.model.load_state_dict(checkpoint)
-        self.model.eval()
+        self.model_weights_path = None
+        self.max_dets = None
+        self.load_model_weights(model_weights_path, max_dets)
 
 
     def predict(self, img_paths):
@@ -70,6 +55,38 @@ class MRCNNInference():
         shapes = [m.shape for m in masks]
         masks = [np.reshape(m, (s[0],s[2],s[3])) for m,s in zip(masks,shapes)]
         return boxes, masks
+
+    def load_model_weights(self, weights_file_path, max_dets):
+        '''Load model weights from loacal file
+
+        Args:
+         - weights_file_path (str): Path to the model weights file (in local filesystem)
+         - max_dets (int): Maximum number of objects to predict per image
+        '''
+        if weights_file_path != self.model_weights_path or max_dets != self.max_dets:
+            self.model_weights_path = weights_file_path
+            self.max_dets = max_dets
+            try:
+                checkpoint = torch.load(self.model_weights_path, map_location=self.device)
+            except FileNotFoundError as e:
+                self.logger.error('Could not load model weights from path :"{}"'.format(self.model_weights_path))
+                raise RuntimeError('Could not load model weights from path :"{}"'.format(self.model_weights_path)) from e
+
+            last_key = list(checkpoint)[-1]
+            num_classes = list(checkpoint[last_key].size())[0]
+
+            try:
+                self.model = torchvision.models.detection.maskrcnn_resnet50_fpn_v2(num_classes=num_classes, box_detections_per_img=self.max_dets)
+            except RuntimeError as e:
+                self.logger.error('Could not create Mask-RCNN model.')
+                raise RuntimeError('Could not create Mask-RCNN model.') from e
+
+            self.model.to(self.device)
+            self.model.load_state_dict(checkpoint)
+            self.model.eval()
+            del checkpoint
+            torch.cuda.empty_cache()
+
 
 
 if __name__=='__main__':
