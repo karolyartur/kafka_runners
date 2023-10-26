@@ -41,6 +41,7 @@ class MRCNNInference():
          - preds tuple[p, masks]: The predictions of the model for the given image, where "p" is a dictionary containing predicted boxes, labels and scores and "masks" is a numpy array of segmentation masks
         '''
         for i, img_path in enumerate(img_paths):
+            self.logger.info('Loading image {} to memory from MinIO using s3'.format(i))
             with self.s3.open(img_path, 'rb') as f:
                 img = np.array(Image.open(f))
                 img = np.moveaxis(img, (2), (0))[:3]/255
@@ -49,11 +50,15 @@ class MRCNNInference():
             else:
                 img = torch.as_tensor(np.expand_dims(img,axis=0), dtype=torch.float32).to(self.device)
                 imgs = torch.cat((imgs, img), 0)
+        self.logger.info('All images loaded and prepared, making predictions ...')
         preds = self.model(imgs)
+        self.logger.info('Finished making predictions')
+        self.logger.info('Processing prediction results')
         boxes = [{k:v.tolist() for k,v in pred.items() if k !='masks'} for pred in preds]
         masks = [pred['masks'].cpu().detach().numpy() for pred in preds]
         shapes = [m.shape for m in masks]
         masks = [np.reshape(m, (s[0],s[2],s[3])) for m,s in zip(masks,shapes)]
+        self.logger.info('Finished processing prediction results')
         return boxes, masks
 
     def load_model_weights(self, weights_file_path, max_dets):
@@ -64,6 +69,7 @@ class MRCNNInference():
          - max_dets (int): Maximum number of objects to predict per image
         '''
         if weights_file_path != self.model_weights_path or max_dets != self.max_dets:
+            self.logger.info('Loading model from {}, with max_dets = {}'.format(weights_file_path,max_dets))
             self.model_weights_path = weights_file_path
             self.max_dets = max_dets
             try:

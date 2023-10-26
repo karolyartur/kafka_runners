@@ -144,6 +144,8 @@ class KafkaInfer(KafkaRunner):
                 weights_file_path = os.path.sep.join(weights_file_path[1:])
                 model_local_path = os.path.join('models',weights_file_name)
 
+                self.logger.info('Downloading model weights file from MinIO path "{}" and saving it at local path "{}"'.format(weights_file_path, model_local_path))
+
                 try:
                     if not os.path.exists('models'):
                         os.mkdir('models')
@@ -152,6 +154,8 @@ class KafkaInfer(KafkaRunner):
                 except RuntimeError:
                     self.logger.warning('Could not locate and/or download model weights from "{}" bucket and location "{}". Inference will NOT start!'.format(weights_file_bucket,weights_file_path))
                     return None
+
+                self.logger.info('Finished downloading model weights file from MinIO path "{}" and saving it at local path "{}"'.format(weights_file_path, model_local_path))
             else:
                 self.logger.warning('Messages in batch "{}" want to use different models! No predictions will be made.'.format(msgs_json))
                 return None
@@ -176,6 +180,7 @@ class KafkaInfer(KafkaRunner):
 
             # Do inference
             start_time = time.time()
+            self.logger.info('Starting inference ...')
             if self.mrcnn is None:
                 self.mrcnn = MRCNNInference(self.client._s3, model_local_path, max_dets=max_dets)
             else:
@@ -188,17 +193,20 @@ class KafkaInfer(KafkaRunner):
 
             # Save results
             for i,(boxes_path, masks_path, img_name) in enumerate(zip(boxes_paths,masks_paths, img_names)):
+                self.logger.info('Saving results from image {} to MinIO paths "{}" and "{}" using s3'.format(i, boxes_path, masks_path))
                 with self.client._s3.open(boxes_path, 'w') as f:
                     f.write(json.dumps(boxes[i]))
                 with self.client._s3.open(masks_path, 'wb') as f:
                     np.savez_compressed(f, masks=masks[i])
 
                 if put_to_db and self.db is not None:
+                    self.logger.info('Saving results from image {} to DB'.format(i))
                     collection = self.db[os.path.splitext(weights_file_name)[0]]
                     try:
                         collection.insert_one({'_id':img_name, 'boxes_path':boxes_path, 'masks_path':masks_path, 'predictions':boxes[i]})
                     except pymongo.errors.DuplicateKeyError:
                         pass
+            self.logger.info('Finished saving results')
                 
             end_time = time.time()
 
