@@ -11,6 +11,9 @@ from mrcnn_inference import MRCNNInference
 from jsonschema import validate, RefResolver
 from jsonschema.exceptions import ValidationError
 from json.decoder import JSONDecodeError
+import multiprocessing as mp
+import s3fs
+from urllib.parse import urlparse
 
 parser = argparse.ArgumentParser(description="Kafka Infer")
 parser.add_argument("in_topic_name", type=str,help="in_topic name")
@@ -24,6 +27,36 @@ parser.add_argument("-g", "--group_id", dest='consumer_group_id', type=str, help
 parser.add_argument("-e","--error_topic_name",dest='error_topic_name', type=str, help="name of the Kafka topic to log errors to", default='error.log')
 parser.add_argument("-d","--debug",dest='debug', action='store_true', help="run the script in debug mode", default=False)
 
+
+MP_POOL_SIZE = 8
+
+def make_s3_instances(num):
+    instances = []
+    minio_client = MinioClient()
+    credentials = minio_client._read_credentials('../credentials')
+    for _ in range(num):
+        if credentials:
+            if 'url' in credentials:
+                parsed_result = urlparse(credentials['url'])
+                scheme = "%s://" % parsed_result.scheme
+                endpoint = parsed_result.geturl().replace(scheme, '', 1)
+            if 'accessKey' in credentials:
+                access_key = credentials['accessKey']
+            if 'secretKey' in credentials:
+                secret_key = credentials['secretKey']
+
+            s3 = s3fs.S3FileSystem(key=access_key, secret=secret_key, client_kwargs={'endpoint_url':credentials['url']}, use_listings_cache=False, skip_instance_cache=True)
+            instances.append(s3)
+    return instances
+
+def proc(inp):
+    s3,path,data = inp
+    if '_boxes.json' in path:
+        with s3.open(path, 'w') as f:
+            f.write(json.dumps(data))
+    elif '_masks.npz' in path:
+        with s3.open(path, 'wb') as f:
+            np.savez_compressed(f, masks=data)
 
 class KafkaInfer(KafkaRunner):
     '''Kafka Inference for DL models
@@ -61,6 +94,7 @@ class KafkaInfer(KafkaRunner):
         # Connect to Minio object storage
         try:
             self.client = MinioClient(logger = self.logger)
+            self.s3_instances = make_s3_instances(MP_POOL_SIZE)
         except (RuntimeError,ValueError):
             exit(0)
 
@@ -186,24 +220,22 @@ class KafkaInfer(KafkaRunner):
             else:
                 self.mrcnn.load_model_weights(model_local_path,max_dets)
             
-            boxes, masks = self.mrcnn.predict(img_paths)
+            results = self.mrcnn.predict(img_paths)
 
-            boxes_paths = [os.path.join(output_path,'{}_boxes.json'.format(img_name)) for output_path,img_name in zip(output_paths, img_names)]
-            masks_paths = [os.path.join(output_path,'{}_masks.npz'.format(img_name)) for output_path,img_name in zip(output_paths, img_names)]
+            results_paths = [os.path.join(output_path,'{}_boxes.json'.format(img_name)) for output_path,img_name in zip(output_paths, img_names)]
+            results_paths.extend([os.path.join(output_path,'{}_masks.npz'.format(img_name)) for output_path,img_name in zip(output_paths, img_names)])
 
             # Save results
-            for i,(boxes_path, masks_path, img_name) in enumerate(zip(boxes_paths,masks_paths, img_names)):
-                self.logger.info('Saving results from image {} to MinIO paths "{}" and "{}" using s3'.format(i, boxes_path, masks_path))
-                with self.client._s3.open(boxes_path, 'w') as f:
-                    f.write(json.dumps(boxes[i]))
-                with self.client._s3.open(masks_path, 'wb') as f:
-                    np.savez_compressed(f, masks=masks[i])
-
+            self.logger.info('Saving results from images to MinIO paths using s3')
+            with mp.Pool(processes=MP_POOL_SIZE) as p:
+                p.map(proc,[*zip(self.s3_instances[:len(results_paths)], results_paths, results)])
+            
+            for i in range(len(img_names)):
                 if put_to_db and self.db is not None:
                     self.logger.info('Saving results from image {} to DB'.format(i))
                     collection = self.db[os.path.splitext(weights_file_name)[0]]
                     try:
-                        collection.insert_one({'_id':img_name, 'boxes_path':boxes_path, 'masks_path':masks_path, 'predictions':boxes[i]})
+                        collection.insert_one({'_id':img_names[i], 'boxes_path':results_paths[i], 'masks_path':results_paths[len(img_names)+i], 'predictions':results[i]})
                     except pymongo.errors.DuplicateKeyError:
                         pass
             self.logger.info('Finished saving results')
@@ -211,7 +243,7 @@ class KafkaInfer(KafkaRunner):
             end_time = time.time()
 
             self.elapsed_time = end_time-start_time
-            self.boxes = boxes[0]
+            self.boxes = results[0]
             cmd = ['echo','']
             self.logger.info('Command to be executed: {}'.format(cmd))
             return cmd
@@ -249,6 +281,7 @@ class KafkaInfer(KafkaRunner):
 def main():
     logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     args = parser.parse_args()
+    mp.set_start_method('spawn')
     mrcnn_trainer = KafkaInfer(
         args.in_topic_name,
         args.out_topic_name,

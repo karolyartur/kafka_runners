@@ -54,12 +54,13 @@ class MRCNNInference():
         preds = self.model(imgs)
         self.logger.info('Finished making predictions')
         self.logger.info('Processing prediction results')
-        boxes = [{k:v.tolist() for k,v in pred.items() if k !='masks'} for pred in preds]
+        results = [{k:v.tolist() for k,v in pred.items() if k !='masks'} for pred in preds]
         masks = [pred['masks'].cpu().detach().numpy() for pred in preds]
         shapes = [m.shape for m in masks]
         masks = [np.reshape(m, (s[0],s[2],s[3])) for m,s in zip(masks,shapes)]
+        results.extend(masks)
         self.logger.info('Finished processing prediction results')
-        return boxes, masks
+        return results
 
     def load_model_weights(self, weights_file_path, max_dets):
         '''Load model weights from loacal file
