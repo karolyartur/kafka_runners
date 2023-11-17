@@ -61,12 +61,11 @@ class MRCNNInference():
         img = torch.as_tensor(np.expand_dims(img,axis=0), dtype=torch.float32).to(self.device)
         preds = self.model(img)
         boxes = {k:v.tolist() for k,v in preds[0].items() if k !='masks'}
-        # masks = preds[0]['masks'].cpu().detach().numpy()
         masks = preds[0]['masks']
         s = masks.shape
         masks = masks.reshape((s[0],s[2],s[3]))
         bin_masks = masks >= 0.5
-        indices = [e.nonzero() for e in bin_masks]
+        indices = [e.nonzero().cpu().detach().numpy() for e in bin_masks]
         return boxes, indices
 
 
