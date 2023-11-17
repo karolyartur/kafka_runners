@@ -168,7 +168,7 @@ class KafkaInfer(KafkaRunner):
             with self.client._s3.open(boxes_path, 'w') as f:
                 f.write(json.dumps(boxes))
             with self.client._s3.open(masks_path, 'wb') as f:
-                np.savez_compressed(f, masks=masks)
+                np.savez_compressed(f, *masks)
 
             if put_to_db and self.db is not None:
                 collection = self.db[os.path.splitext(weights_file_name)[0]]
