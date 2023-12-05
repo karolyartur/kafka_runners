@@ -5,6 +5,7 @@ import logging
 import time
 import pymongo
 import numpy as np
+from kafka.errors import KafkaTimeoutError
 from kafka_runner import KafkaRunner
 from minio_client import MinioClient
 from tracking_utils import Tracker
@@ -212,19 +213,26 @@ class KafkaTrack(KafkaRunner):
         except ValidationError:
             self.logger.warning('Message "{}" failed JSON schema validation (used schema: {})\nIgnoring message'.format(in_msg, os.path.join(self.schema_path,'mushroom_tracking_job.schema.json')))
         else:
-            response = {}
-            response['mushroomTrackingJob'] = msg_json
-            response['timestamp'] = time.time()
-            response['elapsedTime'] = self.elapsed_time
-            response['trackingResult'] = self.tracking_results
-            
-            try:
-                resolver = RefResolver(base_uri='file://'+os.path.abspath(self.schema_path)+'/'+'mushroom_tracking_output.schema.json', referrer=None)
-                validate(instance=response, schema=self.mushroom_tracking_output_schema, resolver=resolver)
-            except ValidationError:
-                self.logger.warning('Response "{}" failed JSON schema validation (used schema: {})\nIgnoring response'.format(response, os.path.join(self.schema_path,'mushroom_tracking_output.schema.json')))
-            else:
-                return response
+            for k,v in self.tracking_results.items():
+                response = {}
+                response['mushroomTrackingJob'] = msg_json
+                response['timestamp'] = time.time()
+                response['elapsedTime'] = self.elapsed_time
+                response['trackingResult'] = {k:v}
+                
+                try:
+                    resolver = RefResolver(base_uri='file://'+os.path.abspath(self.schema_path)+'/'+'mushroom_tracking_output.schema.json', referrer=None)
+                    validate(instance=response, schema=self.mushroom_tracking_output_schema, resolver=resolver)
+                except ValidationError:
+                    self.logger.warning('Response "{}" failed JSON schema validation (used schema: {})\nIgnoring response'.format(response, os.path.join(self.schema_path,'mushroom_tracking_output.schema.json')))
+                else:
+                    try:
+                        self.producer.send(self.out_topic_name, response)
+                        self.logger.info('Sending output: {}'.format(response))
+                    except KafkaTimeoutError as e:
+                        self.logger.error('Timeout error during producer.send(), Potential causes: unable to fetch topic metadata, or unable to obtain memory buffer prior to configured max_block_ms')
+                        self.logger.error(e)
+            return None
 
 def main():
     logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
