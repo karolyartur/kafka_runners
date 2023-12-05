@@ -1,0 +1,8 @@
+urllib3
+minio==7.1.12
+kafka-python
+jsonschema
+s3fs
+pymongo
+numpy
+scipy
