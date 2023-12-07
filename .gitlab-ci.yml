@@ -14,7 +14,7 @@ build.job:
   only:
     - mushroom-tracker
   script:
-    - docker build -t kafkarunners:${CI_COMMIT_BRANCH} .
+    - docker build --no-cache -t kafkarunners:${CI_COMMIT_BRANCH} .
 publish-job:
   stage: publish
   only:
