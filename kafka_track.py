@@ -8,7 +8,7 @@ import numpy as np
 from kafka.errors import KafkaTimeoutError
 from kafka_runner import KafkaRunner
 from minio_client import MinioClient
-from tracking_utils import Tracker
+from tracking_utils import Tracker, validate_tracking_interval
 from jsonschema import validate, RefResolver
 from jsonschema.exceptions import ValidationError
 from json.decoder import JSONDecodeError
@@ -144,6 +144,10 @@ class KafkaTrack(KafkaRunner):
 
             date_start = msg_json['dateStart']
             date_end = msg_json['dateEnd']
+
+            if not validate_tracking_interval(date_start, date_end):
+                self.logger.error('Invalid strat and end dates provided! (Dates must be less then 30 days apart!)')
+                return None
 
             bucket = 'mushroom.monitor'
             minio_path = os.path.join('tracking', weight_file_name, date_start+'_'+date_end+'.json')

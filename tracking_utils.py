@@ -90,7 +90,7 @@ class Tracker():
 
     def _update_candidate_instances(self) -> None:
         '''
-        Update the list of candidate instances after mathing with detections.
+        Update the list of candidate instances after matching with detections.
         '''
         # Add candidate_instances with consecutive_matches >= max_candidate_age to tracked_instances
         self.tracked_instances.extend([i for i in self.candidate_instances if i.consecutive_matches>=self.max_candidate_age])
@@ -99,7 +99,7 @@ class Tracker():
 
     def _update_picked_instances(self, current_date: str) -> None:
         '''
-        Update the list of picked instances after mathing with detections.
+        Update the list of picked instances after matching with detections.
         '''
         # Add tracked_instances with consecutive_non_matches >= max_lost_age to picked_instances
         self.picked_instances.extend([i.pick(current_date) for i in self.tracked_instances if i.consecutive_non_matches>=self.max_lost_age])
@@ -170,6 +170,19 @@ class Tracker():
         export['tracked'] = [{'id':i.id, 'size':i.size, 'box':i.box} for i in self.tracked_instances]
         export['picked'] = [{'id':i.id, 'size':i.size, 'box':i.box} for i in self.picked_instances]
         return export
+
+
+def validate_tracking_interval(start_date: str, end_date: str) -> bool:
+    '''
+    Check the validity of provided tracking intervals
+    '''
+    try:
+        start_datetime = datetime.datetime.strptime(start_date, '%Y_%m_%d_%H%M')
+        end_datetime = datetime.datetime.strptime(end_date, '%Y_%m_%d_%H%M')
+    except ValueError:
+        return False
+    else:
+        return (datetime.timedelta(0) < end_datetime-start_datetime) and (end_datetime-start_datetime < datetime.timedelta(30))
 
 
 if __name__=='__main__':
