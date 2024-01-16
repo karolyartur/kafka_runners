@@ -15,5 +15,5 @@ ENV OUT_KAFKA_TOPIC=""
 ENV KAFKA_BROKERS=""
 ENV WEIGHTS_FILE=""
 
-ENTRYPOINT python3 kafka_minio_trigger.py $IN_KAFKA_TOPIC $OUT_KAFKA_TOPIC $KAFKA_BROKERS --weights_file $WEIGHTS_FILE --put_to_db
+ENTRYPOINT python3 kafka_minio_trigger.py $IN_KAFKA_TOPIC $OUT_KAFKA_TOPIC $KAFKA_BROKERS --group_id $MINIO_TRIGGER_GROUP_ID --weights_file $WEIGHTS_FILE --put_to_db
 
