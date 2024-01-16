@@ -45,4 +45,4 @@ deploy-job:
     - minio-trigger
   script:
     - echo "-e IN_KAFKA_TOPIC=${MINIO_TRIGGER_IN} -e OUT_KAFKA_TOPIC=${INFERENCE_GPU_JOB} -e KAFKA_BROKERS=${KAFKA_BROKERS}"  
-    - docker service create --with-registry-auth --replicas 1 --name ${CI_COMMIT_BRANCH} -e "IN_KAFKA_TOPIC=${MINIO_TRIGGER_IN}" --mount type=bind,source=/opt/fungi,destination=/app/credentials,readonly -e "OUT_KAFKA_TOPIC=${INFERENCE_GPU_JOB}" -e "KAFKA_BROKERS=${KAFKA_BROKERS}" -e "WEIGHTS_FILE=${WEIGHTS_FILE}" registry.hpc.ekik.uni-obuda.hu:5000/kafkarunners:${CI_COMMIT_BRANCH}
+    - docker service create --with-registry-auth --replicas 1 --name ${CI_COMMIT_BRANCH} -e "IN_KAFKA_TOPIC=${MINIO_TRIGGER_IN}" --mount type=bind,source=/opt/fungi,destination=/app/credentials,readonly -e "OUT_KAFKA_TOPIC=${INFERENCE_GPU_JOB}" -e "KAFKA_BROKERS=${KAFKA_BROKERS}" -e "WEIGHTS_FILE=${WEIGHTS_FILE}" -e "MINIO_TRIGGER_GROUP_ID=${MINIO_TRIGGER_GROUP_ID}" registry.hpc.ekik.uni-obuda.hu:5000/kafkarunners:${CI_COMMIT_BRANCH}
