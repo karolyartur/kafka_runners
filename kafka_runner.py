@@ -83,6 +83,8 @@ class KafkaRunner():
             self.logger.error('Could not create the Kafka consumer!')
             self.logger.error(traceback.format_exc())
             raise RuntimeError('Could not create the Kafka consumer!') from e
+        else:
+            self.logger.info('Kafka consumer connected!')
 
         try:
             self.producer = KafkaProducer(
@@ -95,6 +97,8 @@ class KafkaRunner():
             self.logger.error('Could not create the Kafka producer!')
             self.logger.error(traceback.format_exc())
             raise RuntimeError('Could not create the Kafka producer!') from e
+        else:
+            self.logger.info('Kafka producer connected!')
 
         self.logger.error = self._error_log_decorator(self.logger.error)
     
@@ -103,6 +107,8 @@ class KafkaRunner():
 
         This function should be called to use the Kafka Runner. It blocks until a KeyboardInterrupt is encountered
         '''
+        performed_task = False
+        idle_count = 0
         while True:
             try:
                 for msg in self.consumer:
@@ -123,10 +129,15 @@ class KafkaRunner():
                             self.producer.send(self.out_topic_name, response)
                             self.logger.info('Sending output: {}'.format(response))
                         print(stdout.strip())
+                        performed_task = True
                 print('Idle ...')
                 if self.service_info:
                     self.producer.send(self.service_info_topic_name, self.service_info)
                 time.sleep(self.timeout)
+                if performed_task:
+                    idle_count += 1
+                if idle_count > 5:
+                    break
             except FileNotFoundError as e:
                 self.logger.error('The construced command could not be executed!')
                 self.logger.error(e)
