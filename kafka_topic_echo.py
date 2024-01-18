@@ -1,5 +1,4 @@
 import json
-import time
 import argparse
 from kafka import KafkaConsumer
 
@@ -8,10 +7,13 @@ parser.add_argument("topic_name", type=str,help="topic name")
 parser.add_argument("bootstrap_servers", type=str, nargs='+', help="list of bootstrap servers")
 
 class KafkaTopicEcho():
+    '''Simple cmd line echo consumer client for Kafka
+
+    Args:
+     - topic_name (str): Topic to subscribe to
+     - bootstrap_servers (list of strings): Address of Kafka bootstrap servers
     '''
-        Simple cmd line echo consumer client for Kafka
-    '''
-    def __init__(self, topic_name, bootstrap_servers):
+    def __init__(self, topic_name:str, bootstrap_servers: list[str]):
         self.topic_name = topic_name
         self.bootstrap_servers = bootstrap_servers
         self.consumer = KafkaConsumer(
@@ -26,6 +28,8 @@ class KafkaTopicEcho():
 
 
 def main():
+    '''Main function
+    '''
     args = parser.parse_args()
     kafka_echo = KafkaTopicEcho(args.topic_name, args.bootstrap_servers)
     while True:
@@ -33,7 +37,6 @@ def main():
             for msg in kafka_echo.consumer:
                 print(msg.value)
             print('Idle ...')
-            time.sleep(30)
         except KeyboardInterrupt:
             break
 

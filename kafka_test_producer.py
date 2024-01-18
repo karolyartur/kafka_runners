@@ -10,14 +10,17 @@ parser.add_argument("-m","--message", dest='message',type=str, help="message to 
 parser.add_argument("-i","--intrval", dest='interval',type=int, help="message repetition interval in seconds", default=2)
 parser.add_argument("-r","--repeat", dest='repeat', action='store_true', help="repeat")
 
-TOPIC_NAME = 'fungi.toannotate'
-BOOTSTRAP_SERVERS = ['10.8.8.212:9092']
-
 class KafkaTestProducer():
+    '''Simple cmd line producer client for Kafka
+
+    Args:
+     - topic_name (str): Topic to publish to
+     - bootstrap_servers (list of strings): Address of Kafka bootstrap servers
+     - message (str): Message to send (default is "HELLO!")
+     - interval (int): How many seconds to wait between sending messages (only works if repeat is True) (default is 2)
+     - repeat (bool): Repeat sending messages (default is False)
     '''
-        Simple cmd line producer client for Kafka
-    '''
-    def __init__(self, topic_name, bootstrap_servers, message='HELLO!', interval=2, repeat=False):
+    def __init__(self, topic_name: str, bootstrap_servers: list[str], message: str='HELLO!', interval: int=2, repeat: bool=False):
         self.topic_name = topic_name
         self.bootstrap_servers = bootstrap_servers
         self.message = message
@@ -30,7 +33,9 @@ class KafkaTestProducer():
             reconnect_backoff_max_ms=100
             )
 
-    def send_message(self):
+    def send_message(self) -> None:
+        '''Send message to Kafka topic
+        '''
         if self.repeat:
             while True:
                 try:
@@ -43,7 +48,9 @@ class KafkaTestProducer():
             self.producer.send(self.topic_name, self.message)
             print('Sent message: {}'.format(self.message))
 
-def main():
+def main() -> None:
+    '''Main function
+    '''
     args = parser.parse_args()
     kafka_test_producer = KafkaTestProducer(args.topic_name, args.bootstrap_servers, args.message, args.interval, args.repeat)
     kafka_test_producer.send_message()
