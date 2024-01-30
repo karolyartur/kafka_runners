@@ -4,7 +4,6 @@ import json
 import logging
 import argparse
 import urllib3
-import inspect
 import s3fs
 import minio.helpers
 from minio import Minio
@@ -12,63 +11,32 @@ from urllib3.exceptions import MaxRetryError
 from urllib.parse import urlparse, ParseResult
 from minio.error import InvalidResponseError, S3Error, ServerError
 from json.decoder import JSONDecodeError
+from classproperty import classproperty, ClassPropertyMetaClass
 
-
-class ClassPropertyDescriptor():
-
-    def __init__(self, fget, fset=None):
-        self.fget = fget
-        self.fset = fset
-
-    def __get__(self, instance, owner=None):
-        if owner is None:
-            owner = type(instance)
-        return self.fget.__get__(instance, owner)()
-
-    def __set__(self, instance, value):
-        if not self.fset:
-            raise AttributeError("can't set attribute")
-        if inspect.isclass(instance):
-            type_ = instance
-            instance = None
-        else:
-            type_ = type(instance)
-        return self.fset.__get__(instance, type_)(value)
-
-    def setter(self, func):
-        if not isinstance(func, (classmethod, staticmethod)):
-            func = classmethod(func)
-        self.fset = func
-        return self
-
-def classproperty(func):
-    if not isinstance(func, (classmethod, staticmethod)):
-        func = classmethod(func)
-
-    return ClassPropertyDescriptor(func)
-
-
-class ClassPropertyMetaClass(type):
-    def __setattr__(cls, key, value):
-        obj = None
-        if key in cls.__dict__:
-            obj = cls.__dict__.get(key)
-        if obj and type(obj) is ClassPropertyDescriptor:
-            return obj.__set__(cls, value)
-
-        return super().__setattr__(key, value)
 
 parser = argparse.ArgumentParser(description="Minio client")
 parser.add_argument("credentials_path", type=str ,help="path to folder containing credentials")
 
-class MinioClient(metaclass= ClassPropertyMetaClass):
+class MinioClient(metaclass=ClassPropertyMetaClass):
     '''Minio client
 
     Class for convenient interaction with the Minio object storage
 
-    Args:
-     - credentials_path (str): Path to the folder containing the credentials files (default is '../credentials')
-     - logger (logging.logger object): A logger can be passed, if the Minio client is used inside a class that has its own logger already (default is None which means a new logger will be created)
+    It can either be used by making an instance of it:
+
+    minio = MinioClient()
+    minio.list_buckets()
+    ...
+
+    Or as a class:
+
+    MinioClient.connect()
+    MinioClient.list_buckets()
+    ...
+
+    Args (if used by creating an instance):
+     - credentials_path: Path to the folder containing the credentials files (default is '../credentials')
+     - logger: A logger can be passed, if the Minio client is used inside a class that has its own logger already (default is None which means a new logger will be created)
     '''
     logging.basicConfig()
     _logger = logging.getLogger(__name__ + '.MinioClient')
@@ -78,34 +46,47 @@ class MinioClient(metaclass= ClassPropertyMetaClass):
     _raise_errors = True
     _s3 = None
 
+
+    def __init__(self, credentials_path: str='../credentials', logger: logging.Logger=None):
+        '''Constructor for Minio clients
+        '''
+        # Establish connection when the instance is created
+        self.connect(credentials_path, logger)
+
+
+    # Logger class property
     @classproperty
-    def logger(self):
+    def logger(self) -> logging.Logger:
         return self._logger
 
     @logger.setter
-    def logger(self, value):
+    def logger(self, value: logging.Logger) -> None:
         if isinstance(value, logging.Logger):
             self._logger = value
         else:
             raise TypeError('"logger" must be of type "logging.Logger"')
 
+
+    # Client class property
     @classproperty
-    def client(self):
+    def client(self) -> Minio:
         return self._client
 
     @client.setter
-    def client(self, value):
+    def client(self, value: Minio) -> None:
         if isinstance(value, Minio):
             self._client = value
         else:
             raise TypeError('"client" must be an instance of the "Minio" class')
 
+
+    # Depug class property (switch between DEBUG and WARN logging levels)
     @classproperty
-    def debug(self):
+    def debug(self) -> bool:
         return self._debug
     
     @debug.setter
-    def debug(self, value):
+    def debug(self, value: bool) -> None:
         if isinstance(value, bool):
             self._debug = value
             if self.logger:
@@ -116,25 +97,29 @@ class MinioClient(metaclass= ClassPropertyMetaClass):
         else:
             raise TypeError('"debug" must be a boolean')
 
+
+    # Raise errors class property (Enable raising errors)
     @classproperty
-    def raise_errors(self):
+    def raise_errors(self) -> bool:
         return self._raise_errors
 
     @raise_errors.setter
-    def raise_errors(self, value):
+    def raise_errors(self, value: bool) -> None:
         if isinstance(value, bool):
             self._raise_errors = value
         else:
             raise TypeError('"raise_errors" must be a boolean')
 
 
-    def __init__(self, credentials_path='../credentials', logger=None):
-        '''Constructor for Minio clients
-        '''
-        self.connect(credentials_path, logger)
-
     @classmethod
-    def connect(self, credentials_path = '../credentials', logger = None):
+    def connect(self, credentials_path: str='../credentials', logger: logging.Logger=None) -> None:
+        '''Connect to Minio
+
+        Args:
+         - credentials_path: Path to the folder containing the credentials files (default is '../credentials')
+         - logger: A logger can be passed (default is None which means a new logger will be created)
+        '''
+        # Set logger
         if logger:
             self.logger = logger
         if self.debug:
@@ -146,6 +131,7 @@ class MinioClient(metaclass= ClassPropertyMetaClass):
 
         credentials = self._read_credentials(credentials_path)
         if credentials:
+            # Parse credentials
             if 'url' in credentials:
                 parsed_result = urlparse(credentials['url'])
                 scheme = "%s://" % parsed_result.scheme
@@ -159,8 +145,10 @@ class MinioClient(metaclass= ClassPropertyMetaClass):
             if 'secretKey' in credentials:
                 secret_key = credentials['secretKey']
 
+            # Setup S3FS
             self._s3 = s3fs.S3FileSystem(key=access_key, secret=secret_key, client_kwargs={'endpoint_url':credentials['url']}, use_listings_cache=False)
 
+            # Setup Minio
             try:
                 self.client = Minio(
                     endpoint,
@@ -188,8 +176,9 @@ class MinioClient(metaclass= ClassPropertyMetaClass):
                     )
                 self.logger.info('Connected to Minio!')
 
+
     @classmethod
-    def list_buckets(self):
+    def list_buckets(self) -> list[str]|None:
         '''List all buckets in the object storage
         '''
         try:
@@ -203,14 +192,15 @@ class MinioClient(metaclass= ClassPropertyMetaClass):
             if self.raise_errors:
                 raise ValueError('Invalid value in credentials file!') from e
 
+
     @classmethod
-    def create_bucket(self, bucket):
+    def create_bucket(self, bucket: str) -> None:
         '''Create a new bucket
 
         Create a new bucket in the Minio storage. If the specified bucket already exists no new bucket will be created.
 
         Args:
-         - bucket (str): Bucket name
+         - bucket: Bucket name
         '''
         if not self.client.bucket_exists(bucket):
             self.client.make_bucket(bucket)
@@ -218,26 +208,31 @@ class MinioClient(metaclass= ClassPropertyMetaClass):
         else:
             self.logger.info('Bucket "{}" already exists!'.format(bucket))
 
+
     @classmethod
-    def list_objects(self, bucket, minio_path, recursive=False, start_after=None):
+    def list_objects(self, bucket: str, minio_path: str, recursive: bool=False, start_after: str=None) -> list[str]:
         '''List objects in the Minio object storage
 
         Args:
-         - bucket (str): Name of the bucket in which the objects are
-         - minio_path (str): Path for the folder (in the MinIO object storage) in which the objects are
-         - recursive (bool): List objects in subdirectories
-         - start_after (str): List objects after this key name
+         - bucket: Name of the bucket in which the objects are
+         - minio_path: Path for the folder (in the MinIO object storage) in which the objects are
+         - recursive: List objects in subdirectories
+         - start_after: List objects after this key name
+
+        Returns:
+         - objects: List of object names
         '''
         return [o.object_name for o in self.client.list_objects(bucket, minio_path, recursive, start_after)]
 
+
     @classmethod
-    def upload_file(self, bucket, minio_path, local_path):
+    def upload_file(self, bucket: str, minio_path: str, local_path: str) -> None:
         '''Upload a single local file to the Minio object storage
 
         Args:
-         - bucket (str): Name of the bucket to upload the file to
-         - minio_path (str): Path for the uploaded object inside the Minio storage (renaming the file is also allowed)
-         - local_path (str): Path for the local file to be uploaded
+         - bucket: Name of the bucket to upload the file to
+         - minio_path: Path for the uploaded object inside the Minio storage (renaming the file is also allowed)
+         - local_path: Path for the local file to be uploaded
         '''
         try:
             self.client.fput_object(bucket, minio_path, local_path)
@@ -248,14 +243,15 @@ class MinioClient(metaclass= ClassPropertyMetaClass):
         else:
             self.logger.info('Uploaded local file "{}" to bucket "{}" to location "{}"'.format(local_path, bucket, minio_path))
 
+
     @classmethod
-    def upload_directory(self, bucket, minio_path, local_path):
+    def upload_directory(self, bucket: str, minio_path: str, local_path: str) -> None:
         '''Upload an entire local directory to the Minio object storage recursively
 
         Args:
-         - bucket (str): Name of the bucket to upload the directory to
-         - minio_path (str): Path for the uploaded object inside the Minio storage (renaming the directory is also allowed)
-         - local_path (str): Path for the local directory to be uploaded
+         - bucket: Name of the bucket to upload the directory to
+         - minio_path: Path for the uploaded object inside the Minio storage (renaming the directory is also allowed)
+         - local_path: Path for the local directory to be uploaded
         '''
         if os.path.isdir(local_path):
             items = os.listdir(local_path)
@@ -272,14 +268,15 @@ class MinioClient(metaclass= ClassPropertyMetaClass):
         else:
             self.logger.warn('Path "{}" not found! No upload is done!'.format(local_path))
 
+
     @classmethod
-    def download_file(self, bucket, minio_path, local_path):
+    def download_file(self, bucket: str, minio_path: str, local_path: str) -> None:
         '''Download a single file from the Minio object storage
 
         Args:
-         - bucket (str): Name of the bucket to download the file from
-         - minio_path (str): Path of the object inside the Minio storage
-         - local_path (str): Path for the downloaded local file
+         - bucket: Name of the bucket to download the file from
+         - minio_path: Path of the object inside the Minio storage
+         - local_path: Path for the downloaded local file
         '''
         try:
             for o in self.list_objects(bucket, '', True):
@@ -296,14 +293,15 @@ class MinioClient(metaclass= ClassPropertyMetaClass):
         else:
             self.logger.info('Downloaded file "{}" from bucket "{}" to local location "{}"'.format(minio_path, bucket, local_path))
 
+
     @classmethod
-    def download_directory(self, bucket, minio_path, local_path):
+    def download_directory(self, bucket:str, minio_path:str, local_path:str) -> None:
         '''Download an entire directory from the Minio object storage
 
         Args:
-         - bucket (str): Name of the bucket to download the directory from
-         - minio_path (str): Path of the object inside the Minio storage
-         - local_path (str): Path for the downloaded local directory
+         - bucket: Name of the bucket to download the directory from
+         - minio_path: Path of the object inside the Minio storage
+         - local_path: Path for the downloaded local directory
         '''
         for obj in self.client.list_objects(bucket, prefix=minio_path, recursive=True):
             path_list = obj.object_name.split(os.path.sep)
@@ -313,7 +311,7 @@ class MinioClient(metaclass= ClassPropertyMetaClass):
 
 
     @classmethod
-    def _read_credentials(self, credentials_path):
+    def _read_credentials(self, credentials_path: str) -> dict|None:
         '''Read Minio credentials
 
         For INTERNAL USE ONLY!
@@ -332,8 +330,9 @@ class MinioClient(metaclass= ClassPropertyMetaClass):
         else:
             return credentials
 
+
     @classmethod
-    def _http_client(self, timeout=urllib3.Timeout.DEFAULT_TIMEOUT, retries=5):
+    def _http_client(self, timeout: urllib3.Timeout=urllib3.Timeout.DEFAULT_TIMEOUT, retries: int=5) -> urllib3.PoolManager:
         '''Create HTTP client for Minio
 
         For INTERNAL USE ONLY!
@@ -355,8 +354,9 @@ def main():
     minio_client = MinioClient(args.credentials_path)
     bucket_name = 'minio.python.api.test'
     minio_client.create_bucket(bucket_name)
-    minio_client.upload_directory(bucket_name, 'test_2', '../test_2')
-    minio_client.download_directory('minio.python.api.test', 'test_2/test_3', 'test')
+    print(minio_client.list_buckets())
+    # minio_client.upload_directory(bucket_name, 'test_2', '../test_2')
+    minio_client.download_directory('minio.python.api.test', 'configs', './test')
 
 if __name__=="__main__":
     main()
