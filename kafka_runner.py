@@ -271,17 +271,17 @@ class KafkaRunner(ABC):
         return wrapper
 
 
-    def construct_and_validate_service_info(
+    def advertise_service_info(
             self,
             schema_path: str,
             service_name: str,
             service_description: str='',
             input_topic_schema: dict[str,Any]={},
-            output_topic_schema: dict[str,Any]={}) -> dict[str,Any]:
-        '''Helper function for constructing and validating service info JSON messages
+            output_topic_schema: dict[str,Any]={}) -> None:
+        '''Helper function for constructing and validating service info JSON messages to enable service info advertisement
 
         To ensure the service advertises service info use it like this:
-        self.service_info = self.construct_and_validate_service_info(...)
+        self.advertise_service_info(...)
 
         Args:
          - schema_path (str): Path to the folder containing the JSON schemas
@@ -289,22 +289,9 @@ class KafkaRunner(ABC):
          - service_description (str): Short description of the service's functionality and purpose
          - input_topic_schema (dict with str keys and any type of value): JSON schema for input messages
          - output_topic_schema (dict with str keys and any type of value): JSON schema for output messages
-
-        Returns:
-         - service_info (dict with str keys and any type of value): Service info message
         '''
-        self.service_info_schema = {}
-        # Load Service Info JSON schema
-        try:
-            schema_path = os.path.join(schema_path,'service_info.schema.json')
-            with open(schema_path, 'r') as f:
-                self.service_info_schema = json.loads(f.read())
-        except FileNotFoundError:
-            self.logger.warning('JSON schema for Kafka message could not be found at path: "{}"\nService Info messages will NOT be validated!'.format(schema_path))
-            self.service_info_schema = {}
-        except JSONDecodeError:
-            self.logger.warning('JSON schema for Kafka message at path: "{}" could not be decoded (invalid JSON)\nService Info messages will NOT be validated!'.format(schema_path))
-            self.service_info_schema = {}
+        service_info_schema_path = os.path.join(schema_path,'service_info.schema.json')
+        self.service_info_schema = self.load_json_schema(service_info_schema_path)
 
         # Construct service info
         service_info = {}
@@ -313,10 +300,48 @@ class KafkaRunner(ABC):
         service_info['inputTopics']= [{'topicName': self.in_topic_name, 'schema': input_topic_schema}]
         service_info['outputTopics'] = [{'topicName': self.out_topic_name, 'schema': output_topic_schema}, {'topicName': self.error_topic_name, 'schema': {}}, {'topicName': self.service_info_topic_name, 'schema': self.service_info_schema}]
 
+        if self.validate_message(self.service_info_schema, service_info, service_info_schema_path):
+            self.service_info = service_info
+
+
+    def load_json_schema(self, schema_path: str) -> dict[str,Any]:
+        '''Load the provided JSON schema
+
+        Args:
+         - schema_path: Path to the json schema file
+
+        Returns:
+         - schema: The loaded JSON schema
+        '''
+        schema = {}
+        # Load JSON schema
         try:
-            resolver = RefResolver(base_uri='file://'+os.path.abspath(schema_path)+'/'+'service_info.schema.json', referrer=None)
-            validate(instance=service_info, schema=self.service_info_schema, resolver=resolver)
+            with open(schema_path, 'r') as f:
+                schema = json.loads(f.read())
+        except FileNotFoundError:
+            self.logger.warning('JSON schema for Kafka message could not be found at path: "{}"\nMessages will NOT be validated!'.format(schema_path))
+        except JSONDecodeError:
+            self.logger.warning('JSON schema for Kafka message at path: "{}" could not be decoded (invalid JSON)\nMessages will NOT be validated!'.format(schema_path))
+        return schema
+
+
+    def validate_message(self, schema: dict[str,Any], message: dict[str,Any], schema_path: str) -> bool:
+        '''Validate a message according to a given schema
+
+        Args:
+         - schema: Shema to use for validation
+         - message: Message to be validated
+         - schema_path: Path to the json schema file
+
+        Returns:
+         - success: Success of validation
+        '''
+        success = False
+        try:
+            resolver = RefResolver(base_uri='file://'+schema_path, referrer=None)
+            validate(instance=message, schema=schema, resolver=resolver)
         except ValidationError:
-            self.logger.warning('Service Info "{}" failed JSON schema validation (used schema: {})\nIgnoring message'.format(service_info, os.path.join(schema_path,'service_info.schema.json')))
+            self.logger.warning('Message "{}" failed JSON schema validation (used schema: {})\nIgnoring message'.format(message, schema_path))
         else:
-            return service_info
+            success = True
+        return success
