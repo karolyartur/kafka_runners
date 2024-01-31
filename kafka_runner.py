@@ -221,6 +221,7 @@ class KafkaRunner(ABC):
                 reconnect_backoff_max_ms=50,
                 session_timeout_ms=self.timeout*1000,
                 consumer_timeout_ms=self.timeout*1000,
+                max_poll_records=10,
                 value_deserializer=lambda x: json.loads(x.decode('utf-8'))
                 )
         except KafkaConfigurationError as e:
