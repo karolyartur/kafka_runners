@@ -11,6 +11,9 @@ from urllib3.exceptions import MaxRetryError
 from urllib.parse import urlparse, ParseResult
 from minio.error import InvalidResponseError, S3Error, ServerError
 from json.decoder import JSONDecodeError
+
+import sys
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from classproperty import classproperty, ClassPropertyMetaClass
 
 
