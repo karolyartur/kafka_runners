@@ -71,7 +71,7 @@ class KafkaRunner(ABC):
         if self.max_poll_records:
             self.protect_max_poll_records = True
         else:
-            self.protect_max_poll_records = 1  # If not set use the default value (1)
+            self.max_poll_records = 1  # If not set use the default value (1)
 
         # Init optional attributes
         self.service_info = None  # Can be used to store service info message (if set, service info will be published through Kafka)
