@@ -44,6 +44,7 @@ class KafkaRunner(ABC):
      - error_topic_name (str): Name of the Kafka topic to send error logs to (default is 'error.log')
      - service_info_topic_name (str): Name of Kafka topic where service info will be sent to (default is 'service.info')
      - loglevel (logging.DEBUG/WARN/...): Logging level (default is logging.WARN meaning warnings and higher level logs will be reported)
+     - max_poll_records (int): Maximum number of Kafka messages the consumer can read in at once (default is 1, if not set adjusts automatically)
      - timeout (int): Number of seconds before Kafka consumer timeouts (one Idle cycle) (default is 30)
      - self_kill (bool): Flag indicating whether to shut down automatically to clear memory (default is True)
      - kill_idle_count (int): Number of Idle cycles to do after a successful task before shutting down. Only works if self_kill is True (default is 5)
@@ -56,6 +57,7 @@ class KafkaRunner(ABC):
     error_topic_name: str = 'error.log'
     service_info_topic_name: str = 'service.info'
     loglevel: int = logging.WARN
+    max_poll_records: int | None = None
     timeout: int = 30
     self_kill: bool = True
     kill_idle_count: int = 5
@@ -64,6 +66,13 @@ class KafkaRunner(ABC):
     def __post_init__(self):
         '''This will be called at the end of the __init__ method
         '''
+        # Protect max_poll_records if it was set
+        self.protect_max_poll_records = False
+        if self.max_poll_records:
+            self.protect_max_poll_records = True
+        else:
+            self.max_poll_records = 1  # If not set use the default value (1)
+
         # Init optional attributes
         self.service_info = None  # Can be used to store service info message (if set, service info will be published through Kafka)
 
@@ -156,6 +165,15 @@ class KafkaRunner(ABC):
                                 self.logger.info('Finished executing command.')
                         elapsed_time = time.time()-start_time
                         self.logger.info('Elapsed time: {}'.format(elapsed_time))
+
+                        if not performed_task and not self.protect_max_poll_records:
+                            # This was the first task that was performed and max_poll_records is not protected
+                            # Use elapsed_time to estimate how many messages can be processed within the timeout
+                            num_msgs = int((0.6*self.timeout)/elapsed_time)
+                            self.max_poll_records = max(num_msgs,1)
+                            self.logger.info('Creating new Kafka consumer with max_poll_records={}, as timeout is {} and elapsed time was {}'.format(self.max_poll_records,self.timeout,elapsed_time))
+                            self.consumer = self._setup_kafka_consumer()
+
                         # Construct response
                         response = self.make_response(msg_json, elapsed_time)  # Call the implementation of the abstract function
                         if response:
@@ -221,6 +239,7 @@ class KafkaRunner(ABC):
                 reconnect_backoff_max_ms=50,
                 session_timeout_ms=self.timeout*1000,
                 consumer_timeout_ms=self.timeout*1000,
+                max_poll_records=self.max_poll_records,
                 value_deserializer=lambda x: json.loads(x.decode('utf-8'))
                 )
         except KafkaConfigurationError as e:
