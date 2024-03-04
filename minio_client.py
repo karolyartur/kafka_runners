@@ -340,6 +340,7 @@ class MinioClient(metaclass= ClassPropertyMetaClass):
         '''
         http_client = urllib3.PoolManager(
             timeout=timeout,
+            maxsize=200,
             retries=urllib3.Retry(
                 total=retries,
                 backoff_factor=0.2,
