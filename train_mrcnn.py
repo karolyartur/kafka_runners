@@ -126,7 +126,7 @@ class MRCNNTrainer():
         self.config = Configs(config_file_path)
         self.logger.info('Loaded configs from "{}"'.format(config_file_path))
 
-    def _prepare_dataset(self, path, batch_size, shuffle=False, num_workers=0, preprocess=True):
+    def _prepare_dataset(self, path, batch_size, shuffle=False, num_workers=16, preprocess=True):
         '''Create, prepare and return dataset
 
         Args:
