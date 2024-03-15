@@ -345,7 +345,8 @@ class MinioClient(metaclass= ClassPropertyMetaClass):
                 total=retries,
                 backoff_factor=0.2,
                 status_forcelist=[500,502,503,504]
-            )
+            ),
+            num_pools=16
         )
         return http_client
     
