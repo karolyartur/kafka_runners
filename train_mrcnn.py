@@ -137,7 +137,7 @@ class MRCNNTrainer():
         '''
         self.logger.info('Preparing dataset: "{}"'.format(path))
         dataset = InstanceSegmentationDataset(path, self.s3, logger=self.logger, preprocess=preprocess)
-        data_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers, collate_fn=collate_fn)
+        data_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers, collate_fn=collate_fn,prefetch_factor=4)
         return data_loader
     
     def train(self):
