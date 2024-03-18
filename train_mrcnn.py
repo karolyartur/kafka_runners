@@ -74,7 +74,7 @@ class MRCNNTrainer():
             MAX_DETS = 100
 
             # Data loader params
-            NUM_WORKERS = 16
+            NUM_WORKERS = 4
 
             # SGD Optimizer params
             LEARNING_RATE = 0.005
