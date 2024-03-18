@@ -25,10 +25,10 @@ class InstanceSegmentationDataset(torch.utils.data.Dataset):
 
         self.imgs_path = imgs_path
         self.s3 = s3
-        imgs_path_contents = self.s3.ls(self.imgs_path)
+        imgs_path_contents = [os.path.join(self.imgs_path,p) for p in sorted(os.listdir(self.imgs_path))]
 
         # Filter the files from the folder
-        files = [fpath for fpath in sorted(imgs_path_contents) if self.s3.isfile(fpath)]
+        files = [fpath for fpath in imgs_path_contents if os.path.isfile(fpath)]
         # Filter images (files, no "annotation" in their name and matching extension)
         imgs = [fpath for fpath in files if 'annotation' not in os.path.split(fpath)[-1] and os.path.splitext(fpath)[1] in ALLOWED_EXTENSIONS]
         # Filter annotations (files, "annotation" in their name and matching extension)
@@ -39,8 +39,7 @@ class InstanceSegmentationDataset(torch.utils.data.Dataset):
             self.preprocess_dataset(annots)
         else:
             self.logger.info('Using preprocessed annotations')
-        data_path_ls = self.s3.ls(self.imgs_path)
-        self.imgs_path_list = [fpath for fpath in imgs if fpath.replace(os.path.splitext(fpath)[-1], '.npz') in data_path_ls]
+        self.imgs_path_list = [fpath for fpath in imgs if fpath.replace(os.path.splitext(fpath)[-1], '.npz') in imgs_path_contents]
         self.transforms = transforms
 
     def __getitem__(self, idx):
@@ -49,12 +48,12 @@ class InstanceSegmentationDataset(torch.utils.data.Dataset):
         img_path = self.imgs_path_list[idx]
         img_id = os.path.splitext(os.path.split(img_path)[-1])[0]
 
-        with self.s3.open(img_path, 'rb') as f:
+        with open(img_path, 'rb') as f:
             img = np.array(Image.open(f))
         s = img.shape
         img = np.moveaxis(img, (2), (0))[:3]/255
         img = torch.as_tensor(img, dtype=torch.float32)
-        with self.s3.open(os.path.join(self.imgs_path, img_id+'.npz'), 'rb') as f:
+        with open(os.path.join(self.imgs_path, img_id+'.npz'), 'rb') as f:
             annotataions = np.load(f)
             binary_masks = np.reshape(np.unpackbits(annotataions['masks']), (-1,s[0],s[1]))
             boxes = annotataions['boxes']
@@ -88,7 +87,7 @@ class InstanceSegmentationDataset(torch.utils.data.Dataset):
         for annot in annots:
             annotations = {}
             img_id = os.path.splitext(os.path.split(annot)[-1])[0].replace('_annotation','')
-            with self.s3.open(annot, 'rb') as f:
+            with open(annot, 'rb') as f:
                 mask = np.array(Image.open(f))
             s = mask.shape
             mask_flat = np.reshape(mask, (s[0]*s[1], s[2]))
@@ -112,7 +111,7 @@ class InstanceSegmentationDataset(torch.utils.data.Dataset):
                 annotations['masks'] = np.packbits(binary_masks)
                 annotations['boxes'] = np.array(bboxes)
 
-            with self.s3.open(os.path.join(self.imgs_path, '{}.npz'.format(img_id)),'wb') as f:
+            with open(os.path.join(self.imgs_path, '{}.npz'.format(img_id)),'wb') as f:
                 np.savez_compressed(f, **annotations)
         self.logger.info('Preprocessing finished.')
 
