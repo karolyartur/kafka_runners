@@ -154,7 +154,7 @@ class MRCNNTrainer():
             if self.config.USE_LR_SCHEDULER:
                 lr_scheduler.step()
             # evaluate on the test dataset
-            evaluate(self.model, self.valid_dataset, device=self.device)
+            # evaluate(self.model, self.valid_dataset, device=self.device)
             if epoch % self.config.SAVE_FREQ == 0:
                 with self.s3.open(os.path.join(self.output_path, '{}_maskrcnn_weights{}.pth'.format(self.model_name,str(datetime.datetime.now()).split('.')[0].replace(' ','_'))), 'wb') as f:
                     torch.save(self.model.state_dict(), f)
