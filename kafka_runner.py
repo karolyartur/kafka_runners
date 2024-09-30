@@ -6,7 +6,7 @@ import time
 import subprocess
 import logging
 import traceback
-from kafka import KafkaConsumer, KafkaProducer
+from kafka import KafkaConsumer, KafkaProducer, OffsetAndMetadata
 from kafka.errors import KafkaConfigurationError, KafkaTimeoutError
 from jsonschema import validate, RefResolver
 from jsonschema.exceptions import ValidationError
@@ -127,6 +127,7 @@ class KafkaRunner(ABC):
         performed_task = False  # Stores if the service already performed a task or not
         idle_count = 0  # Stores the number of idle cycles
         while True:
+            msg = None
             try:
                 for msg in self.consumer:
                     # Loop through messages from the Kafka topic
@@ -205,6 +206,24 @@ class KafkaRunner(ABC):
             
             except KeyboardInterrupt:
                 break
+
+            except Exception as e:
+                try:
+                    self.logger.error(e)
+                    if msg is not None:
+                        self.logger.error(f'Message: {msg.value}')
+                except KafkaTimeoutError as e:
+                    self.logger.error('Could not send error message to error Kafka topic')
+                    self.logger.error(e)
+                    break
+                else:
+                    topicpartition = list(self.consumer.assignment())
+                    if topicpartition and msg is not None:
+                        partition = topicpartition[1]
+                        meta = self.consumer.partitions_for_topic(self.in_topic_name)
+                        options = {}
+                        options[partition] = OffsetAndMetadata(msg.offset + 1, meta)
+                        self.consumer.commit(options)
 
 
     def _setup_logger(self) -> None:
