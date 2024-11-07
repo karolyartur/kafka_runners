@@ -34,7 +34,7 @@ class MRCNNTrainer():
             self.logger = logging.getLogger(__name__ + '.' + type(self).__name__)
             self.logger.setLevel(logging.DEBUG)
         self.train_path = train_path
-        self.valid_path = valid_path
+        # self.valid_path = valid_path
         self.model_name = model_name
         self.output_path = output_path
 
@@ -49,7 +49,7 @@ class MRCNNTrainer():
         try:
             # Prepare datasets
             self.train_dataset = self._prepare_dataset(self.train_path, self.config.BATCH_SIZE, shuffle=True, num_workers=self.config.NUM_WORKERS, preprocess=preprocess)
-            self.valid_dataset = self._prepare_dataset(self.valid_path, self.config.BATCH_SIZE, num_workers=self.config.NUM_WORKERS, preprocess=preprocess)
+            # self.valid_dataset = self._prepare_dataset(self.valid_path, self.config.BATCH_SIZE, num_workers=self.config.NUM_WORKERS, preprocess=preprocess)
         except FileNotFoundError as e:
             raise RuntimeError('Could not prepare dataset!') from e
 

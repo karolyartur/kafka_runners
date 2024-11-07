@@ -53,13 +53,21 @@ class InstanceSegmentationDataset(torch.utils.data.Dataset):
         s = img.shape
         img = np.moveaxis(img, (2), (0))[:3]/255
         img = torch.as_tensor(img, dtype=torch.float32)
+        negative = False
         with open(os.path.join(self.imgs_path, img_id+'.npz'), 'rb') as f:
             annotataions = np.load(f)
-            binary_masks = np.reshape(np.unpackbits(annotataions['masks']), (-1,s[0],s[1]))
+            if annotataions['masks']:
+                binary_masks = np.reshape(np.unpackbits(annotataions['masks']), (-1,s[0],s[1]))
+            else:
+                binary_masks = np.zeros((1,s[0],s[1]))
+                negative = True
             boxes = annotataions['boxes']
 
         boxes = torch.as_tensor(boxes, dtype=torch.float32)
-        labels = torch.ones((len(binary_masks),), dtype=torch.int64)
+        if negative:
+            labels = torch.zeros((len(binary_masks),), dtype=torch.int64)
+        else:
+            labels = torch.ones((len(binary_masks),), dtype=torch.int64)
         masks = torch.as_tensor(binary_masks, dtype=torch.uint8)
         image_id = torch.tensor([idx])
         area = (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])
