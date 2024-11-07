@@ -56,7 +56,7 @@ class InstanceSegmentationDataset(torch.utils.data.Dataset):
         negative = False
         with open(os.path.join(self.imgs_path, img_id+'.npz'), 'rb') as f:
             annotataions = np.load(f)
-            if annotataions['masks']:
+            if len(annotataions['masks']) != 0:
                 binary_masks = np.reshape(np.unpackbits(annotataions['masks']), (-1,s[0],s[1]))
             else:
                 binary_masks = np.zeros((1,s[0],s[1]))
