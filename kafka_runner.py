@@ -11,6 +11,7 @@ from kafka.errors import KafkaConfigurationError, KafkaTimeoutError
 from jsonschema import validate, RefResolver
 from jsonschema.exceptions import ValidationError
 from json.decoder import JSONDecodeError
+from concurrent.futures import ThreadPoolExecutor
 
 from collections.abc import Callable
 from typing import Any
@@ -86,6 +87,9 @@ class KafkaRunner(ABC):
         # Decorate logger's error function, so it also sends errors in Kafka 
         self.logger.error = self._error_log_decorator(self.logger.error)
 
+        # Thread pool for processing messages
+        self.executor = ThreadPoolExecutor(max_workers=1)
+
 
     @abstractmethod
     def proc_incoming_msg(self, msg_json: dict[str,Any]) -> list[str] | None:
@@ -145,7 +149,22 @@ class KafkaRunner(ABC):
                     else:
                         # Message successfully converted to dict
                         start_time = time.time()
-                        cmd = self.proc_incoming_msg(msg_json)  # Call the implementation of the abstract function
+                        future = self.executor.submit(self.proc_incoming_msg, msg_json)
+
+                        # Wait for the task to complete while sending heartbeats
+                        assignment = list(self.consumer.assignment())
+                        partition = None
+                        current_offset = 0
+                        if assignment:
+                            partition = assignment[0]
+                            current_offset = self.consumer.position(partition)
+                        while not future.done():
+                            self.consumer.poll(timeout_ms=1000, update_offsets=False)  # Send heartbeats without advancing offsets
+                            time.sleep(0.5)
+                        if assignment and partition is not None:
+                            self.consumer.seek(partition, current_offset)
+                        cmd = future.result()
+
                         if cmd:
                             # Execute command if a command is returned
                             self.logger.info('Executing command')
@@ -167,7 +186,7 @@ class KafkaRunner(ABC):
                         elapsed_time = time.time()-start_time
                         self.logger.info('Elapsed time: {}'.format(elapsed_time))
 
-                        if not performed_task and not self.protect_max_poll_records:
+                        if not performed_task and not self.protect_max_poll_records and self.consumer_group_id is None:
                             # This was the first task that was performed and max_poll_records is not protected
                             # Use elapsed_time to estimate how many messages can be processed within the timeout
                             num_msgs = int((0.6*self.timeout)/elapsed_time)
@@ -186,6 +205,7 @@ class KafkaRunner(ABC):
                                 self.logger.error('Timeout error during producer.send(), Potential causes: unable to fetch topic metadata, or unable to obtain memory buffer prior to configured max_block_ms')
                                 self.logger.error(e)
                         performed_task = True
+                        idle_count = 0
 
                 # If the Kafka consumer reaches timeout it is considered an Idle cycle
                 print('Idle ...')
@@ -218,8 +238,8 @@ class KafkaRunner(ABC):
                     break
                 else:
                     topicpartition = list(self.consumer.assignment())
-                    if topicpartition and msg is not None:
-                        partition = topicpartition[1]
+                    if topicpartition and msg is not None and self.consumer_group_id is not None:
+                        partition = topicpartition[0]
                         meta = self.consumer.partitions_for_topic(self.in_topic_name)
                         options = {}
                         options[partition] = OffsetAndMetadata(msg.offset + 1, meta)
