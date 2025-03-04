@@ -192,6 +192,8 @@ class KafkaRunner(ABC):
                             num_msgs = int((0.6*self.timeout)/elapsed_time)
                             self.max_poll_records = max(num_msgs,1)
                             self.logger.info('Creating new Kafka consumer with max_poll_records={}, as timeout is {} and elapsed time was {}'.format(self.max_poll_records,self.timeout,elapsed_time))
+                            if hasattr(self.consumer, 'close'):
+                                self.consumer.close()
                             self.consumer = self._setup_kafka_consumer()
 
                         # Construct response
@@ -244,6 +246,12 @@ class KafkaRunner(ABC):
                         options = {}
                         options[partition] = OffsetAndMetadata(msg.offset + 1, meta)
                         self.consumer.commit(options)
+
+        # Close consumer and producer before exiting
+        if hasattr(self.consumer, 'close'):
+            self.consumer.close()
+        if hasattr(self.producer, 'close'):
+            self.producer.close()
 
 
     def _setup_logger(self) -> None:
